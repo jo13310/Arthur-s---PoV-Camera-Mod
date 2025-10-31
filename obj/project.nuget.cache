@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "C5kF9UXkr0U=",
+  "dgSpecHash": "KwHQnABMWs8=",
   "success": true,
-  "projectFilePath": "c:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ArthurRayPovMod.csproj",
+  "projectFilePath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ArthurRayPovMod.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Jonathan\\.nuget\\packages\\asmresolver\\6.0.0-beta.2\\asmresolver.6.0.0-beta.2.nupkg.sha512",
     "C:\\Users\\Jonathan\\.nuget\\packages\\asmresolver.dotnet\\6.0.0-beta.2\\asmresolver.dotnet.6.0.0-beta.2.nupkg.sha512",

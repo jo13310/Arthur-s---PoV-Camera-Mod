@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "c:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ArthurRayPovMod.csproj": {}
+    "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ArthurRayPovMod.csproj": {}
   },
   "projects": {
-    "c:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ArthurRayPovMod.csproj": {
+    "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ArthurRayPovMod.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "c:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ArthurRayPovMod.csproj",
+        "projectUniqueName": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ArthurRayPovMod.csproj",
         "projectName": "ArthurRayPovMod",
-        "projectPath": "c:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ArthurRayPovMod.csproj",
+        "projectPath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ArthurRayPovMod.csproj",
         "packagesPath": "C:\\Users\\Jonathan\\.nuget\\packages\\",
-        "outputPath": "c:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\obj\\",
+        "outputPath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
