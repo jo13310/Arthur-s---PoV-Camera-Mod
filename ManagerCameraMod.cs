@@ -51,9 +51,9 @@ public class ManagerCameraBootstrap : MonoBehaviour
     private const string MatchBuilderRoot = "MatchPlaybackController/MatchComponents/Match3DBuilder";
     private const string BallPath = "MatchPlaybackController/MatchComponents/Match3DBuilder/BallPrefab(Clone)";
     private const string GameScene = "MatchPlayback";
-    private const float PlayerPovForwardOffset = 0.32f;
+    private const float PlayerPovForwardOffset = -0.05f;
     private const float PlayerPovVerticalOffset = 0.02f;
-    private const float ManagerPovForwardOffset = 0.32f;
+    private const float ManagerPovForwardOffset = -0.04f;
     private const float ManagerPovVerticalOffset = 0.05f;
     private const float ManagerSidelineOffset = 18f;
     private const float ManagerSidelineBackOffset = 4f;
