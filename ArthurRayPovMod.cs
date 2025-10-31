@@ -70,6 +70,7 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     private const float ManagerSidelineBackOffset = 4f;
     private const float ManagerLookHeightOffset = 0.15f;
     private const float ManagerSidelineHeight = 2.2f;
+    private const float ManagerBallFollowSmoothTime = 0.35f;
     
     public KeyCode normalCameraKey = KeyCode.F1;
     public KeyCode ballCarrierPovKey = KeyCode.F2;
@@ -104,6 +105,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     private bool _legacyInputUnavailable;
     private bool _lastMatch3DActive;
     private bool _hasSeenBall;
+    private bool _hasSmoothedBall;
+    private Vector3 _smoothedBallPosition;
     private float _ballLastActiveTime;
     private const float BallStateGraceSeconds = 0.5f;
     private bool _restoreOnNext3D;
@@ -174,6 +177,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                 _cameraMode = CameraMode.None;
                 _lastMatch3DActive = false;
                 _hasSeenBall = false;
+                _hasSmoothedBall = false;
+                _smoothedBallPosition = Vector3.zero;
                 _ballLastActiveTime = 0f;
             }
         }
@@ -189,6 +194,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
             }
             _lastMatch3DActive = false;
             _hasSeenBall = false;
+            _hasSmoothedBall = false;
+            _smoothedBallPosition = Vector3.zero;
             _ballLastActiveTime = 0f;
             return;
         }
@@ -559,6 +566,9 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         EnsureBallReference();
         EnsureManagerList();
 
+        var fallbackFocus = _customCamera.transform.position + _customCamera.transform.forward * 5f;
+        var smoothedBallGround = GetStableBallGroundPosition(fallbackFocus);
+
         var hasAnchor = false;
 
         if (_managers.Count > 0)
@@ -587,14 +597,10 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                     _customCamera.transform.position = cameraPosition;
 
                     Vector3 lookTarget;
-                    if (_ball != null)
-                    {
-                        lookTarget = _ball.position + Vector3.up * ManagerLookHeightOffset;
-                    }
+                    if (_ball != null || _hasSmoothedBall)
+                        lookTarget = smoothedBallGround + Vector3.up * ManagerLookHeightOffset;
                     else
-                    {
                         lookTarget = headPosition + forward * 5f;
-                    }
 
                     var lookDirection = lookTarget - headPosition;
                     if (lookDirection.sqrMagnitude < 0.0001f)
@@ -623,9 +629,7 @@ public class ArthurRayPovBootstrap : MonoBehaviour
 
         _loggedMissingManagerOnce = false;
 
-        var ballPosition = _ball != null
-            ? _ball.position
-            : _customCamera.transform.position + _customCamera.transform.forward * 5f;
+        var ballPosition = smoothedBallGround;
 
         Vector3 fieldForward = Vector3.forward;
         Vector3 fieldRight = Vector3.right;
@@ -829,6 +833,40 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         _currentManagerIndex = index;
         _currentManager = _managers[index];
         _loggedMissingManagerOnce = false;
+    }
+
+    private Vector3 GetStableBallGroundPosition(Vector3 fallback)
+    {
+        var groundY = _matchBuilder != null ? _matchBuilder.position.y : 0f;
+        var fallbackGround = new Vector3(fallback.x, groundY, fallback.z);
+        var deltaTime = Time.unscaledDeltaTime;
+        var lerpFactor = deltaTime <= 0f ? 1f : 1f - Mathf.Exp(-deltaTime / ManagerBallFollowSmoothTime);
+
+        if (_ball != null)
+        {
+            var target = _ball.position;
+            target.y = groundY;
+
+            if (!_hasSmoothedBall)
+            {
+                _smoothedBallPosition = target;
+                _hasSmoothedBall = true;
+                return _smoothedBallPosition;
+            }
+
+            _smoothedBallPosition = Vector3.Lerp(_smoothedBallPosition, target, lerpFactor);
+            return _smoothedBallPosition;
+        }
+
+        if (!_hasSmoothedBall)
+        {
+            _smoothedBallPosition = fallbackGround;
+            _hasSmoothedBall = true;
+            return _smoothedBallPosition;
+        }
+
+        _smoothedBallPosition = Vector3.Lerp(_smoothedBallPosition, fallbackGround, lerpFactor);
+        return _smoothedBallPosition;
     }
 
     private void ClearPendingRestore()
@@ -1594,6 +1632,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
             _originalMainTag = "MainCamera";
             _players.Clear();
             _managers.Clear();
+            _hasSmoothedBall = false;
+            _smoothedBallPosition = Vector3.zero;
         }
     }
 }
