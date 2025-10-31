@@ -106,6 +106,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     private bool _hasSeenBall;
     private float _ballLastActiveTime;
     private const float BallStateGraceSeconds = 0.5f;
+    private bool _restoreOnNext3D;
+    private CustomCameraState _pendingRestoreState;
     
     // Reflection caches for Unity Input System (if present)
     private System.Type _tKeyboard;
@@ -120,6 +122,15 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         None = 0,
         PlayerPov = 1,
         ManagerPov = 2
+    }
+
+    private struct CustomCameraState
+    {
+        public CameraMode Mode;
+        public bool AutoFollowBallCarrier;
+        public int PlayerInstanceId;
+        public int ManagerInstanceId;
+        public bool HasState;
     }
 
     private class Avatar
@@ -147,7 +158,11 @@ public class ArthurRayPovBootstrap : MonoBehaviour
             var sceneName = activeScene.name;
             if (_lastSceneName != sceneName)
             {
-                if (_customCameraActive) DisableCustomCamera(true);
+                if (_customCameraActive)
+                {
+                    ClearPendingRestore();
+                    DisableCustomCamera(true);
+                }
 
                 _lastSceneName = sceneName;
                 _ball = null;
@@ -168,7 +183,10 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         if (!activeScene.IsValid() || activeScene.name != GameScene)
         {
             if (_customCameraActive)
+            {
+                ClearPendingRestore();
                 DisableCustomCamera(true);
+            }
             _lastMatch3DActive = false;
             _hasSeenBall = false;
             _ballLastActiveTime = 0f;
@@ -178,18 +196,33 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         var match3DActive = IsMatch3DViewActive();
         if (!match3DActive && _lastMatch3DActive && _customCameraActive)
         {
-            ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: Match UI switched to 2D; restoring default camera.");
+            RememberCurrentCustomState();
+            _restoreOnNext3D = _pendingRestoreState.HasState;
+            if (_restoreOnNext3D)
+                ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: Match UI switched to 2D; saving POV for auto-restore.");
+            else
+                ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: Match UI switched to 2D; returning to default camera.");
+
             DisableCustomCamera(false);
         }
-        else if (match3DActive && !_lastMatch3DActive && _customCameraActive)
+        else if (match3DActive && !_lastMatch3DActive)
         {
-            ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: Match UI switched back to 3D; restoring default camera.");
-            DisableCustomCamera(false);
+            if (_restoreOnNext3D && _pendingRestoreState.HasState)
+            {
+                RestorePendingCustomState();
+            }
+            else
+            {
+                _restoreOnNext3D = false;
+                _pendingRestoreState = default;
+                ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: Match UI switched back to 3D; staying on default camera.");
+            }
         }
         _lastMatch3DActive = match3DActive;
 
         if (NewInputWasPressedThisFrame(normalCameraKey))
         {
+            ClearPendingRestore();
             if (_customCameraActive) DisableCustomCamera(false);
         }
 
@@ -691,6 +724,117 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         }
 
         return builderObject.activeInHierarchy;
+    }
+
+    private void RememberCurrentCustomState()
+    {
+        if (!_customCameraActive || _cameraMode == CameraMode.None)
+        {
+            _pendingRestoreState = default;
+            return;
+        }
+
+        _pendingRestoreState = new CustomCameraState
+        {
+            HasState = true,
+            Mode = _cameraMode,
+            AutoFollowBallCarrier = _autoFollowBallCarrier,
+            PlayerInstanceId = _currentPlayer?.InstanceId ?? -1,
+            ManagerInstanceId = _currentManager?.InstanceId ?? -1
+        };
+    }
+
+    private void RestorePendingCustomState()
+    {
+        var state = _pendingRestoreState;
+        _pendingRestoreState = default;
+        _restoreOnNext3D = false;
+
+        if (!state.HasState)
+            return;
+
+        try
+        {
+            switch (state.Mode)
+            {
+                case CameraMode.PlayerPov:
+                    if (!state.AutoFollowBallCarrier && state.PlayerInstanceId > 0)
+                        TryRestorePlayerSelection(state.PlayerInstanceId, forceRefresh: true);
+
+                    ActivatePlayerPov(state.AutoFollowBallCarrier);
+
+                    if (!state.AutoFollowBallCarrier && state.PlayerInstanceId > 0)
+                        TryRestorePlayerSelection(state.PlayerInstanceId, forceRefresh: false);
+                    break;
+
+                case CameraMode.ManagerPov:
+                    if (state.ManagerInstanceId > 0)
+                        TryRestoreManagerSelection(state.ManagerInstanceId, forceRefresh: true);
+
+                    ActivateManagerPov();
+
+                    if (state.ManagerInstanceId > 0)
+                        TryRestoreManagerSelection(state.ManagerInstanceId, forceRefresh: false);
+                    break;
+
+                default:
+                    break;
+            }
+
+            var restored = _customCameraActive && _cameraMode == state.Mode && state.Mode != CameraMode.None;
+            if (restored)
+                ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: Restored {state.Mode} POV after 3D view returned.");
+            else
+                ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: 3D view returned; keeping default camera.");
+        }
+        catch (Exception ex)
+        {
+            ArthurRayPovMod.Log?.LogWarning($"ArthurRayPovBootstrap: Failed to restore POV after 3D return: {ex}");
+        }
+    }
+
+    private void TryRestorePlayerSelection(int instanceId, bool forceRefresh)
+    {
+        if (instanceId <= 0)
+            return;
+
+        EnsurePlayerList(forceRefresh);
+
+        if (_players.Count == 0)
+            return;
+
+        var index = _players.FindIndex(p => p.InstanceId == instanceId);
+        if (index < 0)
+            return;
+
+        _currentPlayerIndex = index;
+        _currentPlayer = _players[index];
+        _autoFollowBallCarrier = false;
+    }
+
+    private void TryRestoreManagerSelection(int instanceId, bool forceRefresh)
+    {
+        if (instanceId <= 0)
+            return;
+
+        EnsureManagerList(forceRefresh);
+
+        if (_managers.Count == 0)
+            return;
+
+        var index = _managers.FindIndex(m => m.InstanceId == instanceId);
+        if (index < 0)
+            return;
+
+        _currentManagerIndex = index;
+        _currentManager = _managers[index];
+        _loggedMissingManagerOnce = false;
+    }
+
+    private void ClearPendingRestore()
+    {
+        _restoreOnNext3D = false;
+        _pendingRestoreState = default;
     }
 
     private void EnsureBallReference()
@@ -1216,8 +1360,19 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                 label = focus.DisplayName;
         }
 
-        if (!string.IsNullOrEmpty(label) && label.Equals("Player 3D", StringComparison.OrdinalIgnoreCase))
-            label = null;
+        if (!string.IsNullOrEmpty(label))
+        {
+            var canonical = label.Trim();
+            var lower = canonical.ToLowerInvariant();
+            var squashed = lower.Replace(" ", string.Empty);
+            if (lower.Contains("player 3d") ||
+                lower.Contains("player-3d") ||
+                lower.Contains("player_3d") ||
+                squashed.Contains("player3d"))
+            {
+                return;
+            }
+        }
 
         if (string.IsNullOrEmpty(label))
             return;
@@ -1357,6 +1512,9 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     {
         try
         {
+            if (dueToSceneChange)
+                ClearPendingRestore();
+
             if (_customCamera != null)
             {
                 _customCamera.enabled = false;
