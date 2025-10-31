@@ -62,8 +62,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         "BallPrefab"
     };
     private const string GameScene = "MatchPlayback";
-    private const float PlayerPovForwardOffset = -0.20f;
-    private const float PlayerPovVerticalOffset = 0.02f;
+    private const float PlayerPovForwardOffset = 1.2f;
+    private const float PlayerPovVerticalOffset = 0.30f;
     private const float ManagerPovForwardOffset = -0.12f;
     private const float ManagerPovVerticalOffset = 0.05f;
     private const float ManagerSidelineOffset = 18f;
