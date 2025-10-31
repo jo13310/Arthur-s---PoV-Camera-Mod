@@ -690,7 +690,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                     DisplayName = displayName,
                     InstanceId = instanceId
                 });
-            }
+
+                }
 
             if (candidates.Count > 0)
             {
@@ -767,7 +768,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                     DisplayName = displayName,
                     InstanceId = instanceId
                 });
-            }
+
+                }
 
             _managers.Clear();
 
@@ -971,6 +973,7 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         cleaned = cleaned.Replace("_", " ");
         return cleaned.Trim();
     }
+
 
     private Transform TryGetHead(Animator animator)
     {
@@ -1254,6 +1257,10 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         }
     }
 }
+
+
+
+
 
 
 
