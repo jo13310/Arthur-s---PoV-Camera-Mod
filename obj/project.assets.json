@@ -4613,9 +4613,9 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ManagerCameraMod.csproj",
-      "projectName": "ManagerCameraMod",
-      "projectPath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ManagerCameraMod.csproj",
+      "projectUniqueName": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ArthurRayPovMod.csproj",
+      "projectName": "ArthurRayPovMod",
+      "projectPath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\ArthurRayPovMod.csproj",
       "packagesPath": "C:\\Users\\Jonathan\\.nuget\\packages\\",
       "outputPath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\\obj\\",
       "projectStyle": "PackageReference",
