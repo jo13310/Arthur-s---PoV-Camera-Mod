@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("GerKo & Brululul")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6aca363d7acb84d5e416e94a2a67b9007710090d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8f7d11183a4770c09e4cf1dc777110175144bb59")]
 [assembly: System.Reflection.AssemblyProductAttribute("ArthurRay PoV Mod")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ArthurRayPovMod")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
