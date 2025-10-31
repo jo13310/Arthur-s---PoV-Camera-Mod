@@ -42,13 +42,13 @@
       <HintPath>bin\UnityEngine.InputModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.IMGUIModule">
-      <HintPath>..\..\BepInEx\unity-libs\UnityEngine.IMGUIModule.dll</HintPath>
+      <HintPath>bin\Release\net6.0\UnityEngine.IMGUIModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.AnimationModule">
-      <HintPath>..\..\BepInEx\unity-libs\UnityEngine.AnimationModule.dll</HintPath>
+      <HintPath>bin\Release\net6.0\UnityEngine.AnimationModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.TextRenderingModule">
-      <HintPath>..\..\BepInEx\unity-libs\UnityEngine.TextRenderingModule.dll</HintPath>
+      <HintPath>bin\Release\net6.0\UnityEngine.TextRenderingModule.dll</HintPath>
     </Reference>
   </ItemGroup>
 </Project>
