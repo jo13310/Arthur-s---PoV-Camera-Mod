@@ -1,0 +1,42 @@
+C:\Unity\ManagerCameraMod\bin\Debug\net6.0\ManagerCameraMod.deps.json
+C:\Unity\ManagerCameraMod\bin\Debug\net6.0\ManagerCameraMod.dll
+C:\Unity\ManagerCameraMod\bin\Debug\net6.0\ManagerCameraMod.pdb
+C:\Unity\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.CoreModule.dll
+C:\Unity\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.dll
+C:\Unity\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.csproj.AssemblyReference.cache
+C:\Unity\ManagerCameraMod\obj\Debug\net6.0\MyPluginInfo.cs
+C:\Unity\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.GeneratedMSBuildEditorConfig.editorconfig
+C:\Unity\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.AssemblyInfoInputs.cache
+C:\Unity\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.AssemblyInfo.cs
+C:\Unity\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.csproj.CoreCompileInputs.cache
+C:\Unity\ManagerCameraMod\obj\Debug\net6.0\ManagerC.020624DD.Up2Date
+C:\Unity\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.dll
+C:\Unity\ManagerCameraMod\obj\Debug\net6.0\refint\ManagerCameraMod.dll
+C:\Unity\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.pdb
+C:\Unity\ManagerCameraMod\obj\Debug\net6.0\ref\ManagerCameraMod.dll
+C:\Unity\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.InputLegacyModule.dll
+C:\Unity\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.InputModule.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\ManagerCameraMod.deps.json
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\ManagerCameraMod.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\ManagerCameraMod.pdb
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.AnimationModule.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.CoreModule.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.IMGUIModule.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.InputLegacyModule.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.InputModule.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.TextRenderingModule.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.SharedInternalsModule.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.TextCoreFontEngineModule.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\bin\Debug\net6.0\UnityEngine.TextCoreTextEngineModule.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.csproj.AssemblyReference.cache
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\obj\Debug\net6.0\MyPluginInfo.cs
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.GeneratedMSBuildEditorConfig.editorconfig
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.AssemblyInfoInputs.cache
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.AssemblyInfo.cs
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.csproj.CoreCompileInputs.cache
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\obj\Debug\net6.0\ManagerC.020624DD.Up2Date
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\obj\Debug\net6.0\refint\ManagerCameraMod.dll
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\obj\Debug\net6.0\ManagerCameraMod.pdb
+C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\ManagerCameraMod\obj\Debug\net6.0\ref\ManagerCameraMod.dll
