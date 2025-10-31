@@ -50,7 +50,17 @@ public class ArthurRayPovMod : BasePlugin
 public class ArthurRayPovBootstrap : MonoBehaviour
 {
     private const string MatchBuilderRoot = "MatchPlaybackController/MatchComponents/Match3DBuilder";
-    private const string BallPath = "MatchPlaybackController/MatchComponents/Match3DBuilder/BallPrefab(Clone)";
+    private static readonly string[] BallObjectPaths =
+    {
+        "MatchPlaybackController/MatchComponents/Match3DBuilder/BallPrefab(Clone)",
+        "MatchPlaybackController/MatchComponents/Match3DBuilder/BallPrefab"
+    };
+
+    private static readonly string[] BallObjectNames =
+    {
+        "BallPrefab(Clone)",
+        "BallPrefab"
+    };
     private const string GameScene = "MatchPlayback";
     private const float PlayerPovForwardOffset = -0.20f;
     private const float PlayerPovVerticalOffset = 0.02f;
@@ -92,6 +102,10 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     private bool _loggedMissingPlayerOnce;
     private bool _loggedMissingManagerOnce;
     private bool _legacyInputUnavailable;
+    private bool _lastMatch3DActive;
+    private bool _hasSeenBall;
+    private float _ballLastActiveTime;
+    private const float BallStateGraceSeconds = 0.5f;
     
     // Reflection caches for Unity Input System (if present)
     private System.Type _tKeyboard;
@@ -143,6 +157,9 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                 _currentPlayer = null;
                 _currentPlayerIndex = -1;
                 _cameraMode = CameraMode.None;
+                _lastMatch3DActive = false;
+                _hasSeenBall = false;
+                _ballLastActiveTime = 0f;
             }
         }
 
@@ -152,8 +169,24 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         {
             if (_customCameraActive)
                 DisableCustomCamera(true);
+            _lastMatch3DActive = false;
+            _hasSeenBall = false;
+            _ballLastActiveTime = 0f;
             return;
         }
+
+        var match3DActive = IsMatch3DViewActive();
+        if (!match3DActive && _lastMatch3DActive && _customCameraActive)
+        {
+            ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: Match UI switched to 2D; restoring default camera.");
+            DisableCustomCamera(false);
+        }
+        else if (match3DActive && !_lastMatch3DActive && _customCameraActive)
+        {
+            ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: Match UI switched back to 3D; restoring default camera.");
+            DisableCustomCamera(false);
+        }
+        _lastMatch3DActive = match3DActive;
 
         if (NewInputWasPressedThisFrame(normalCameraKey))
         {
@@ -597,22 +630,139 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         _customCamera.transform.rotation = Quaternion.LookRotation(lookDir.normalized, Vector3.up);
     }
 
+    private bool IsMatch3DViewActive()
+    {
+        EnsureBallReference();
+        var now = Time.unscaledTime;
+        var hadBallReference = _ball != null;
+
+        if (_ball != null)
+        {
+            var ballObject = _ball.gameObject;
+            if (ballObject == null)
+            {
+                _ball = null;
+            }
+            else
+            {
+                var isActive = ballObject.activeSelf && ballObject.activeInHierarchy;
+                if (isActive)
+                {
+                    _ballLastActiveTime = now;
+                    return true;
+                }
+
+                if (_hasSeenBall)
+                {
+                    if (now - _ballLastActiveTime <= BallStateGraceSeconds)
+                        return _lastMatch3DActive;
+                    return false;
+                }
+            }
+        }
+
+        if (_ball == null && hadBallReference)
+        {
+            if (_hasSeenBall)
+            {
+                if (now - _ballLastActiveTime <= BallStateGraceSeconds)
+                    return _lastMatch3DActive;
+                return false;
+            }
+        }
+
+        if (_hasSeenBall)
+            return false;
+
+        if (_matchBuilder == null)
+        {
+            var builderGo = GameObject.Find(MatchBuilderRoot);
+            _matchBuilder = builderGo != null ? builderGo.transform : null;
+        }
+
+        if (_matchBuilder == null)
+            return false;
+
+        var builderObject = _matchBuilder.gameObject;
+        if (builderObject == null)
+        {
+            _matchBuilder = null;
+            return false;
+        }
+
+        return builderObject.activeInHierarchy;
+    }
+
     private void EnsureBallReference()
     {
         if (_ball != null)
         {
             var ballObject = _ball.gameObject;
-            if (ballObject == null || !ballObject.activeInHierarchy)
+            if (ballObject == null)
             {
                 _ball = null;
+            }
+            else if (!_hasSeenBall)
+            {
+                _hasSeenBall = true;
+                if (ballObject.activeSelf && ballObject.activeInHierarchy)
+                    _ballLastActiveTime = Time.unscaledTime;
             }
         }
 
         if (_ball == null)
         {
-            var ballGo = GameObject.Find(BallPath);
+            GameObject ballGo = null;
+            foreach (var path in BallObjectPaths)
+            {
+                ballGo = GameObject.Find(path);
+                if (ballGo != null)
+                    break;
+            }
+
+            if (ballGo == null)
+                ballGo = FindBallInMatchBuilder();
+
             _ball = ballGo != null ? ballGo.transform : null;
+            if (_ball != null)
+            {
+                _hasSeenBall = true;
+                _ballLastActiveTime = Time.unscaledTime;
+            }
         }
+    }
+
+    private GameObject FindBallInMatchBuilder()
+    {
+        if (_matchBuilder == null)
+        {
+            var builderGo = GameObject.Find(MatchBuilderRoot);
+            _matchBuilder = builderGo != null ? builderGo.transform : null;
+        }
+
+        if (_matchBuilder == null)
+            return null;
+
+        foreach (var transform in EnumerateHierarchy(_matchBuilder, includeInactive: true))
+        {
+            if (transform == null)
+                continue;
+
+            var name = transform.name;
+            if (string.IsNullOrEmpty(name))
+                continue;
+
+            foreach (var candidate in BallObjectNames)
+            {
+                if (string.Equals(name, candidate, StringComparison.Ordinal))
+                    return transform.gameObject;
+            }
+
+            if (name.StartsWith("BallPrefab", StringComparison.Ordinal))
+                return transform.gameObject;
+        }
+
+        return null;
     }
 
     private void EnsurePlayerList(bool forceRefresh = false)
@@ -1066,6 +1216,9 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                 label = focus.DisplayName;
         }
 
+        if (!string.IsNullOrEmpty(label) && label.Equals("Player 3D", StringComparison.OrdinalIgnoreCase))
+            label = null;
+
         if (string.IsNullOrEmpty(label))
             return;
 
@@ -1212,17 +1365,49 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                 _customCamera.tag = "Untagged";
             }
 
-            if (_lastMainCamera != null)
+            var cameraToRestore = _lastMainCamera;
+            var restoredEnabled = _originalMainEnabled;
+            var restoredTag = string.IsNullOrEmpty(_originalMainTag) ? "MainCamera" : _originalMainTag;
+
+            if (cameraToRestore == null)
+            {
+                cameraToRestore = Camera.main;
+                if (cameraToRestore == _customCamera)
+                    cameraToRestore = null;
+
+                if (cameraToRestore == null)
+                {
+                    var mainTagged = GameObject.FindWithTag("MainCamera");
+                    if (mainTagged != null)
+                    {
+                        var candidate = SafeGetComponent<Camera>(mainTagged.transform);
+                        if (candidate != null && candidate != _customCamera)
+                            cameraToRestore = candidate;
+                    }
+                }
+
+                if (cameraToRestore != null)
+                {
+                    restoredEnabled = true;
+                    restoredTag = "MainCamera";
+                }
+            }
+
+            if (cameraToRestore != null)
             {
                 try
                 {
-                    _lastMainCamera.gameObject.SetActive(true);
-                    _lastMainCamera.tag = string.IsNullOrEmpty(_originalMainTag) ? "MainCamera" : _originalMainTag;
-                    _lastMainCamera.enabled = _originalMainEnabled;
+                    cameraToRestore.gameObject.SetActive(true);
+                    cameraToRestore.tag = restoredTag;
+                    cameraToRestore.enabled = true;
                 }
                 catch
                 {
                 }
+            }
+            else
+            {
+                ArthurRayPovMod.Log?.LogWarning("ArthurRayPovBootstrap: Unable to locate a main camera to restore after disabling custom camera.");
             }
 
             _customCameraActive = false;
@@ -1254,10 +1439,3 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         }
     }
 }
-
-
-
-
-
-
-
