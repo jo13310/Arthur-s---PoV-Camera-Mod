@@ -51,9 +51,9 @@ public class ManagerCameraBootstrap : MonoBehaviour
     private const string MatchBuilderRoot = "MatchPlaybackController/MatchComponents/Match3DBuilder";
     private const string BallPath = "MatchPlaybackController/MatchComponents/Match3DBuilder/BallPrefab(Clone)";
     private const string GameScene = "MatchPlayback";
-    private const float PlayerPovForwardOffset = 0.22f;
+    private const float PlayerPovForwardOffset = 0.32f;
     private const float PlayerPovVerticalOffset = 0.02f;
-    private const float ManagerPovForwardOffset = 0.18f;
+    private const float ManagerPovForwardOffset = 0.32f;
     private const float ManagerPovVerticalOffset = 0.05f;
     private const float ManagerSidelineOffset = 18f;
     private const float ManagerSidelineBackOffset = 4f;
@@ -1104,6 +1104,9 @@ public class ManagerCameraBootstrap : MonoBehaviour
                 }
             }
 
+            // NOTE: IL2CPP runtime used by FM26 strips many reflection helpers
+            // (FindObjectsOfType<T>, Camera.allCameras, Scene.GetRootGameObjects, etc.).
+            // Always rely on the simple Camera.main/tag lookup to avoid MissingMethodException.
             var mainCameraCandidate = Camera.main;
             if (mainCameraCandidate == _customCamera)
             {
