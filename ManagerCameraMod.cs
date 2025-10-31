@@ -51,11 +51,20 @@ public class ManagerCameraBootstrap : MonoBehaviour
     private const string MatchBuilderRoot = "MatchPlaybackController/MatchComponents/Match3DBuilder";
     private const string BallPath = "MatchPlaybackController/MatchComponents/Match3DBuilder/BallPrefab(Clone)";
     private const string GameScene = "MatchPlayback";
+    private const float PlayerPovForwardOffset = 0.22f;
+    private const float PlayerPovVerticalOffset = 0.02f;
+    private const float ManagerPovForwardOffset = 0.18f;
+    private const float ManagerPovVerticalOffset = 0.05f;
+    private const float ManagerSidelineOffset = 18f;
+    private const float ManagerSidelineBackOffset = 4f;
+    private const float ManagerLookHeightOffset = 0.15f;
+    private const float ManagerSidelineHeight = 2.2f;
     
     public KeyCode normalCameraKey = KeyCode.F1;
     public KeyCode ballCarrierPovKey = KeyCode.F2;
     public KeyCode previousPlayerKey = KeyCode.F3;
     public KeyCode nextPlayerKey = KeyCode.F4;
+    public KeyCode managerPovKey = KeyCode.F5;
     public bool copySettingsFromMain = true;
 
     private ManualLogSource _logger;
@@ -65,16 +74,22 @@ public class ManagerCameraBootstrap : MonoBehaviour
     private Camera _customCamera;
     private bool _customCameraActive;
     private bool _originalMainEnabled = true;
+    private string _originalMainTag = "MainCamera";
     private string _lastSceneName = string.Empty;
     private Transform _matchBuilder;
     private CameraMode _cameraMode = CameraMode.None;
     private bool _autoFollowBallCarrier;
-    private readonly List<PlayerAvatar> _players = new();
-    private PlayerAvatar _currentPlayer;
+    private readonly List<Avatar> _players = new();
+    private readonly List<Avatar> _managers = new();
+    private Avatar _currentPlayer;
+    private Avatar _currentManager;
     private int _currentPlayerIndex = -1;
+    private int _currentManagerIndex = -1;
     private float _nextPlayerScanTime;
+    private float _nextManagerScanTime;
     private GUIStyle _hudStyle;
     private bool _loggedMissingPlayerOnce;
+    private bool _loggedMissingManagerOnce;
     private bool _legacyInputUnavailable;
     
     // Reflection caches for Unity Input System (if present)
@@ -88,10 +103,11 @@ public class ManagerCameraBootstrap : MonoBehaviour
     private enum CameraMode
     {
         None = 0,
-        PlayerPov = 1
+        PlayerPov = 1,
+        ManagerPov = 2
     }
 
-    private class PlayerAvatar
+    private class Avatar
     {
         public Transform Root;
         public Transform Head;
@@ -148,14 +164,25 @@ public class ManagerCameraBootstrap : MonoBehaviour
             ActivatePlayerPov(autoFollowBallCarrier: true);
         }
 
+        if (NewInputWasPressedThisFrame(managerPovKey))
+        {
+            ActivateManagerPov();
+        }
+
         if (NewInputWasPressedThisFrame(previousPlayerKey))
         {
-            CyclePlayer(-1);
+            if (_cameraMode == CameraMode.ManagerPov)
+                CycleManager(-1);
+            else
+                CyclePlayer(-1);
         }
 
         if (NewInputWasPressedThisFrame(nextPlayerKey))
         {
-            CyclePlayer(1);
+            if (_cameraMode == CameraMode.ManagerPov)
+                CycleManager(1);
+            else
+                CyclePlayer(1);
         }
 
         // While active, keep aiming at the ball; if anything disappears, auto-deactivate
@@ -165,6 +192,9 @@ public class ManagerCameraBootstrap : MonoBehaviour
             {
                 case CameraMode.PlayerPov:
                     UpdatePlayerPovCamera();
+                    break;
+                case CameraMode.ManagerPov:
+                    UpdateManagerPovCamera();
                     break;
             }
         }
@@ -255,6 +285,8 @@ public class ManagerCameraBootstrap : MonoBehaviour
 
         _cameraMode = CameraMode.PlayerPov;
         _autoFollowBallCarrier = autoFollowBallCarrier;
+        _currentManager = null;
+        _currentManagerIndex = -1;
 
         if (autoFollowBallCarrier)
         {
@@ -277,6 +309,80 @@ public class ManagerCameraBootstrap : MonoBehaviour
             var modeLabel = autoFollowBallCarrier ? "ball-carrier auto follow" : "manual selection";
             ManagerCameraMod.Log?.LogInfo($"ManagerCameraBootstrap: Player POV camera active ({modeLabel}).");
         }
+    }
+
+    private void ActivateManagerPov()
+    {
+        if (!EnableCustomCamera())
+            return;
+
+        var stateChanged = _cameraMode != CameraMode.ManagerPov || !_customCameraActive;
+
+        _cameraMode = CameraMode.ManagerPov;
+        _autoFollowBallCarrier = false;
+        _currentPlayer = null;
+        _currentPlayerIndex = -1;
+
+        EnsureManagerList(forceRefresh: true);
+
+        if (_managers.Count == 0)
+        {
+            ManagerCameraMod.Log?.LogWarning("ManagerCameraBootstrap: No managers found for POV camera.");
+            _currentManager = null;
+            _currentManagerIndex = -1;
+            return;
+        }
+
+        if (_currentManagerIndex < 0 || _currentManagerIndex >= _managers.Count)
+            _currentManagerIndex = 0;
+
+        _currentManager = _managers[_currentManagerIndex];
+        _loggedMissingManagerOnce = false;
+
+        if (stateChanged && _currentManager != null)
+        {
+            var label = string.IsNullOrEmpty(_currentManager.DisplayName) ? "Manager" : _currentManager.DisplayName;
+            ManagerCameraMod.Log?.LogInfo($"ManagerCameraBootstrap: Manager POV camera active ({label}).");
+        }
+    }
+
+    private void CycleManager(int direction)
+    {
+        if (direction == 0)
+            return;
+
+        EnsureManagerList(forceRefresh: _managers.Count == 0);
+
+        if (_managers.Count == 0)
+        {
+            ManagerCameraMod.Log?.LogWarning("ManagerCameraBootstrap: No managers found to cycle POV camera.");
+            return;
+        }
+
+        if (!_customCameraActive || _cameraMode != CameraMode.ManagerPov)
+        {
+            ActivateManagerPov();
+        }
+
+        if (_managers.Count == 0 || _currentManager == null)
+            return;
+
+        if (_currentManagerIndex < 0 || _currentManagerIndex >= _managers.Count)
+        {
+            _currentManagerIndex = direction > 0 ? 0 : _managers.Count - 1;
+        }
+        else
+        {
+            _currentManagerIndex = (_currentManagerIndex + direction) % _managers.Count;
+            if (_currentManagerIndex < 0)
+                _currentManagerIndex += _managers.Count;
+        }
+
+        _currentManager = _managers[_currentManagerIndex];
+        _loggedMissingManagerOnce = false;
+
+        var label = string.IsNullOrEmpty(_currentManager.DisplayName) ? "Manager" : _currentManager.DisplayName;
+        ManagerCameraMod.Log?.LogInfo($"ManagerCameraBootstrap: Manager POV camera active ({label}).");
     }
 
     private void CyclePlayer(int direction)
@@ -353,9 +459,9 @@ public class ManagerCameraBootstrap : MonoBehaviour
         _loggedMissingPlayerOnce = false;
 
         // Anchor the POV at the player's head and look towards the active ball.
-        var headPosition = GetPlayerHeadPosition(_currentPlayer);
+        var headPosition = GetAvatarHeadPosition(_currentPlayer);
         var forward = _currentPlayer.Root != null ? _currentPlayer.Root.forward : Vector3.forward;
-        var cameraPosition = headPosition - forward * 0.08f + Vector3.up * 0.02f;
+        var cameraPosition = headPosition - forward * PlayerPovForwardOffset + Vector3.up * PlayerPovVerticalOffset;
 
         _customCamera.transform.position = cameraPosition;
 
@@ -376,6 +482,118 @@ public class ManagerCameraBootstrap : MonoBehaviour
         }
 
         _customCamera.transform.rotation = Quaternion.LookRotation(lookDirection.normalized, Vector3.up);
+    }
+
+    private void UpdateManagerPovCamera()
+    {
+        if (!_customCameraActive || _customCamera == null)
+            return;
+
+        EnsureBallReference();
+        EnsureManagerList();
+
+        var hasAnchor = false;
+
+        if (_managers.Count > 0)
+        {
+            if (_currentManager == null || !_currentManager.IsValid || _currentManagerIndex < 0 || _currentManagerIndex >= _managers.Count)
+            {
+                _currentManager = _managers[0];
+                _currentManagerIndex = 0;
+            }
+
+            if (_currentManager != null && _currentManager.IsValid)
+            {
+                var headPosition = GetAvatarHeadPosition(_currentManager);
+                if (headPosition != Vector3.zero)
+                {
+                    _loggedMissingManagerOnce = false;
+
+                    var forward = _currentManager.Root != null ? _currentManager.Root.forward : Vector3.forward;
+                    forward.y = 0f;
+                    if (forward.sqrMagnitude < 0.0001f)
+                        forward = Vector3.forward;
+                    else
+                        forward.Normalize();
+
+                    var cameraPosition = headPosition - forward * ManagerPovForwardOffset + Vector3.up * ManagerPovVerticalOffset;
+                    _customCamera.transform.position = cameraPosition;
+
+                    Vector3 lookTarget;
+                    if (_ball != null)
+                    {
+                        lookTarget = _ball.position + Vector3.up * ManagerLookHeightOffset;
+                    }
+                    else
+                    {
+                        lookTarget = headPosition + forward * 5f;
+                    }
+
+                    var lookDirection = lookTarget - headPosition;
+                    if (lookDirection.sqrMagnitude < 0.0001f)
+                    {
+                        lookDirection = forward;
+                    }
+
+                    _customCamera.transform.rotation = Quaternion.LookRotation(lookDirection.normalized, Vector3.up);
+                    hasAnchor = true;
+                }
+                else if (!_loggedMissingManagerOnce)
+                {
+                    ManagerCameraMod.Log?.LogWarning("ManagerCameraBootstrap: Manager POV target missing head transform.");
+                    _loggedMissingManagerOnce = true;
+                }
+            }
+        }
+        else
+        {
+            _currentManager = null;
+            _currentManagerIndex = -1;
+        }
+
+        if (hasAnchor)
+            return;
+
+        _loggedMissingManagerOnce = false;
+
+        var ballPosition = _ball != null
+            ? _ball.position
+            : _customCamera.transform.position + _customCamera.transform.forward * 5f;
+
+        Vector3 fieldForward = Vector3.forward;
+        Vector3 fieldRight = Vector3.right;
+        if (_matchBuilder != null)
+        {
+            fieldForward = _matchBuilder.forward;
+            fieldRight = _matchBuilder.right;
+        }
+
+        fieldForward.y = 0f;
+        fieldRight.y = 0f;
+
+        if (fieldForward.sqrMagnitude < 0.0001f)
+            fieldForward = Vector3.forward;
+        else
+            fieldForward.Normalize();
+
+        if (fieldRight.sqrMagnitude < 0.0001f)
+            fieldRight = Vector3.right;
+        else
+            fieldRight.Normalize();
+
+        const float sidelineSign = -1f;
+        var lateralOffset = fieldRight * ManagerSidelineOffset * sidelineSign;
+        var backwardOffset = fieldForward * ManagerSidelineBackOffset;
+        var cameraPos = ballPosition + lateralOffset - backwardOffset + Vector3.up * ManagerSidelineHeight;
+
+        _customCamera.transform.position = cameraPos;
+
+        var lookTargetFallback = ballPosition + Vector3.up * ManagerLookHeightOffset;
+        var lookDir = lookTargetFallback - cameraPos;
+        if (lookDir.sqrMagnitude < 0.0001f)
+            lookDir = fieldForward;
+
+        _customCamera.transform.rotation = Quaternion.LookRotation(lookDir.normalized, Vector3.up);
     }
 
     private void EnsureBallReference()
@@ -410,6 +628,20 @@ public class ManagerCameraBootstrap : MonoBehaviour
         }
     }
 
+    private void EnsureManagerList(bool forceRefresh = false)
+    {
+        var now = Time.time;
+        if (forceRefresh || _managers.Count == 0 || now >= _nextManagerScanTime)
+        {
+            _nextManagerScanTime = now + 2f;
+            RefreshManagerList();
+        }
+        else
+        {
+            _managers.RemoveAll(m => !m.IsValid);
+        }
+    }
+
     private void RefreshPlayerList()
     {
         try
@@ -423,7 +655,7 @@ public class ManagerCameraBootstrap : MonoBehaviour
             if (_matchBuilder == null)
                 return;
 
-            var candidates = new List<PlayerAvatar>();
+            var candidates = new List<Avatar>();
             var seen = new HashSet<int>();
 
             foreach (var transform in EnumerateHierarchy(_matchBuilder, includeInactive: true))
@@ -445,13 +677,12 @@ public class ManagerCameraBootstrap : MonoBehaviour
                 var instanceId = root.gameObject.GetInstanceID();
                 if (!seen.Add(instanceId))
                     continue;
+                var head = TryGetHead(animator);
+                if (head == null)
+                    head = FindHeadTransform(root);
 
-        var head = TryGetHead(animator);
-        if (head == null)
-            head = FindHeadTransform(root);
-
-                var displayName = CleanPlayerName(root.gameObject.name);
-                candidates.Add(new PlayerAvatar
+                var displayName = CleanDisplayName(root.gameObject.name);
+                candidates.Add(new Avatar
                 {
                     Root = root,
                     Head = head,
@@ -488,13 +719,101 @@ public class ManagerCameraBootstrap : MonoBehaviour
         }
     }
 
-    private PlayerAvatar FindClosestPlayerToBall()
+    private void RefreshManagerList()
+    {
+        try
+        {
+            if (_matchBuilder == null)
+            {
+                var builderGo = GameObject.Find(MatchBuilderRoot);
+                _matchBuilder = builderGo != null ? builderGo.transform : null;
+            }
+
+            if (_matchBuilder == null)
+                return;
+
+            var candidates = new List<Avatar>();
+            var seen = new HashSet<int>();
+
+            foreach (var transform in EnumerateHierarchy(_matchBuilder, includeInactive: true))
+            {
+                if (transform == _matchBuilder)
+                    continue;
+
+                var animator = SafeGetComponent<Animator>(transform);
+                if (animator == null)
+                    continue;
+
+                var root = animator.transform;
+                if (!root.gameObject.activeInHierarchy)
+                    continue;
+
+                if (!IsLikelyManager(root))
+                    continue;
+
+                var instanceId = root.gameObject.GetInstanceID();
+                if (!seen.Add(instanceId))
+                    continue;
+                var head = TryGetHead(animator);
+                if (head == null)
+                    head = FindHeadTransform(root);
+
+                var displayName = CleanDisplayName(root.gameObject.name);
+                candidates.Add(new Avatar
+                {
+                    Root = root,
+                    Head = head,
+                    DisplayName = displayName,
+                    InstanceId = instanceId
+                });
+            }
+
+            _managers.Clear();
+
+            if (candidates.Count > 0)
+            {
+                candidates.Sort((a, b) => string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase));
+                _managers.AddRange(candidates);
+
+                if (_currentManager != null)
+                {
+                    var index = _managers.FindIndex(m => m.InstanceId == _currentManager.InstanceId);
+                    if (index >= 0)
+                    {
+                        _currentManagerIndex = index;
+                        _currentManager = _managers[index];
+                    }
+                    else
+                    {
+                        _currentManagerIndex = 0;
+                        _currentManager = _managers[0];
+                    }
+                }
+                else if (_managers.Count > 0)
+                {
+                    _currentManagerIndex = 0;
+                    _currentManager = _managers[0];
+                }
+            }
+            else
+            {
+                _currentManager = null;
+                _currentManagerIndex = -1;
+            }
+        }
+        catch (Exception ex)
+        {
+            ManagerCameraMod.Log?.LogError($"ManagerCameraBootstrap: RefreshManagerList failed: {ex}");
+        }
+    }
+
+    private Avatar FindClosestPlayerToBall()
     {
         if (_ball == null || _players.Count == 0)
             return null;
 
         var ballPosition = _ball.position;
-        PlayerAvatar closest = null;
+        Avatar closest = null;
         var bestDistance = float.MaxValue;
 
         foreach (var player in _players)
@@ -502,7 +821,7 @@ public class ManagerCameraBootstrap : MonoBehaviour
             if (!player.IsValid)
                 continue;
 
-            var head = GetPlayerHeadPosition(player);
+            var head = GetAvatarHeadPosition(player);
             var distance = (head - ballPosition).sqrMagnitude;
             if (distance < bestDistance)
             {
@@ -514,7 +833,7 @@ public class ManagerCameraBootstrap : MonoBehaviour
         return closest;
     }
 
-    private void SetCurrentPlayer(PlayerAvatar candidate)
+    private void SetCurrentPlayer(Avatar candidate)
     {
         if (candidate == null || !candidate.IsValid)
             return;
@@ -532,7 +851,7 @@ public class ManagerCameraBootstrap : MonoBehaviour
         }
     }
 
-    private Vector3 GetPlayerHeadPosition(PlayerAvatar player)
+    private Vector3 GetAvatarHeadPosition(Avatar player)
     {
         if (player == null)
             return Vector3.zero;
@@ -587,6 +906,27 @@ public class ManagerCameraBootstrap : MonoBehaviour
         return false;
     }
 
+    private bool IsLikelyManager(Transform candidate)
+    {
+        if (candidate == null)
+            return false;
+
+        if (MatchesManagerKeyword(candidate.name))
+            return true;
+
+        var parent = candidate.parent;
+        var depth = 0;
+        while (parent != null && depth < 4)
+        {
+            if (MatchesManagerKeyword(parent.name))
+                return true;
+            parent = parent.parent;
+            depth++;
+        }
+
+        return false;
+    }
+
     private bool MatchesPlayerKeyword(string value)
     {
         if (string.IsNullOrEmpty(value))
@@ -605,10 +945,26 @@ public class ManagerCameraBootstrap : MonoBehaviour
                lower.Contains("attacker");
     }
 
-    private string CleanPlayerName(string raw)
+    private bool MatchesManagerKeyword(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return false;
+
+        var lower = value.ToLowerInvariant();
+        return lower.Contains("manager") ||
+               lower.Contains("coach") ||
+               lower.Contains("staff") ||
+               lower.Contains("gaffer") ||
+               lower.Contains("assistant") ||
+               lower.Contains("technical") ||
+               lower.Contains("touchline") ||
+               lower.Contains("sideline");
+    }
+
+    private string CleanDisplayName(string raw)
     {
         if (string.IsNullOrEmpty(raw))
-            return "Unknown Player";
+            return "Unknown Person";
 
         var cleaned = raw.Replace("(Clone)", string.Empty);
         cleaned = cleaned.Replace("_", " ");
@@ -681,10 +1037,35 @@ public class ManagerCameraBootstrap : MonoBehaviour
 
     private void OnGUI()
     {
-        if (!_customCameraActive || _cameraMode != CameraMode.PlayerPov)
+        if (!_customCameraActive)
             return;
 
-        if (_currentPlayer == null || string.IsNullOrEmpty(_currentPlayer.DisplayName))
+        string label = null;
+        if (_cameraMode == CameraMode.PlayerPov)
+        {
+            if (_currentPlayer != null && !string.IsNullOrEmpty(_currentPlayer.DisplayName))
+            {
+                label = _currentPlayer.DisplayName;
+            }
+            else
+            {
+                EnsureBallReference();
+                EnsurePlayerList();
+                var carrier = FindClosestPlayerToBall();
+                if (carrier != null && !string.IsNullOrEmpty(carrier.DisplayName))
+                    label = carrier.DisplayName;
+            }
+        }
+        else if (_cameraMode == CameraMode.ManagerPov)
+        {
+            EnsureBallReference();
+            EnsurePlayerList();
+            var focus = FindClosestPlayerToBall();
+            if (focus != null && !string.IsNullOrEmpty(focus.DisplayName))
+                label = focus.DisplayName;
+        }
+
+        if (string.IsNullOrEmpty(label))
             return;
 
         if (_hudStyle == null)
@@ -698,21 +1079,54 @@ public class ManagerCameraBootstrap : MonoBehaviour
             }
 
             _hudStyle.fontSize = 24;
-            _hudStyle.alignment = TextAnchor.UpperCenter;
+            _hudStyle.alignment = TextAnchor.UpperRight;
             _hudStyle.fontStyle = FontStyle.Bold;
             _hudStyle.normal.textColor = Color.white;
         }
 
-        var width = 320f;
-        var rect = new Rect((Screen.width - width) * 0.5f, 20f, width, 28f);
-        GUI.Label(rect, _currentPlayer.DisplayName, _hudStyle);
+        var width = 280f;
+        var rectX = Mathf.Max(Screen.width * 0.75f - width, 0f);
+        var rect = new Rect(rectX, 20f, width, 28f);
+        GUI.Label(rect, label, _hudStyle);
     }
     
     private bool EnableCustomCamera()
     {
+        string previousCustomTag = null;
         try
         {
-            _lastMainCamera = Camera.main;
+            if (_customCamera != null)
+            {
+                previousCustomTag = _customCamera.tag;
+                if (_customCamera.tag == "MainCamera")
+                {
+                    _customCamera.tag = "Untagged";
+                }
+            }
+
+            var mainCameraCandidate = Camera.main;
+            if (mainCameraCandidate == _customCamera)
+            {
+                mainCameraCandidate = null;
+            }
+
+            if (mainCameraCandidate == null)
+            {
+                var mainTagged = GameObject.FindWithTag("MainCamera");
+                if (mainTagged != null)
+                {
+                    var cam = SafeGetComponent<Camera>(mainTagged.transform);
+                    if (cam != null && cam != _customCamera)
+                        mainCameraCandidate = cam;
+                }
+            }
+
+            if (mainCameraCandidate == null && _lastMainCamera != null && _lastMainCamera != _customCamera)
+            {
+                mainCameraCandidate = _lastMainCamera;
+            }
+
+            _lastMainCamera = mainCameraCandidate;
             EnsureBallReference();
 
             if (_customCamera == null)
@@ -722,6 +1136,10 @@ public class ManagerCameraBootstrap : MonoBehaviour
                 DontDestroyOnLoad(go);
                 go.hideFlags = HideFlags.HideAndDontSave;
                 go.tag = "MainCamera";
+            }
+            else
+            {
+                _customCamera.tag = "MainCamera";
             }
 
             if (copySettingsFromMain && _lastMainCamera != null)
@@ -749,7 +1167,16 @@ public class ManagerCameraBootstrap : MonoBehaviour
             if (_lastMainCamera != null)
             {
                 _originalMainEnabled = _lastMainCamera.enabled;
-                _lastMainCamera.enabled = false;
+                _originalMainTag = _lastMainCamera.tag;
+
+                try
+                {
+                    _lastMainCamera.tag = "MainCamera";
+                    _lastMainCamera.enabled = false;
+                }
+                catch
+                {
+                }
             }
 
             _customCamera.gameObject.SetActive(true);
@@ -759,6 +1186,10 @@ public class ManagerCameraBootstrap : MonoBehaviour
         }
         catch (Exception ex)
         {
+            if (_customCamera != null && previousCustomTag != null)
+            {
+                _customCamera.tag = previousCustomTag;
+            }
             ManagerCameraMod.Log?.LogError($"ManagerCameraBootstrap: EnableCustomCamera failed: {ex}");
             _customCameraActive = false;
             return false;
@@ -774,12 +1205,15 @@ public class ManagerCameraBootstrap : MonoBehaviour
                 _customCamera.enabled = false;
                 _customCamera.gameObject.SetActive(false);
                 _customCamera.transform.SetParent(null, worldPositionStays: true);
+                _customCamera.tag = "Untagged";
             }
 
             if (_lastMainCamera != null)
             {
                 try
                 {
+                    _lastMainCamera.gameObject.SetActive(true);
+                    _lastMainCamera.tag = string.IsNullOrEmpty(_originalMainTag) ? "MainCamera" : _originalMainTag;
                     _lastMainCamera.enabled = _originalMainEnabled;
                 }
                 catch
@@ -792,6 +1226,9 @@ public class ManagerCameraBootstrap : MonoBehaviour
             _autoFollowBallCarrier = false;
             _currentPlayer = null;
             _currentPlayerIndex = -1;
+            _currentManager = null;
+            _currentManagerIndex = -1;
+            _loggedMissingManagerOnce = false;
 
             if (dueToSceneChange)
                 ManagerCameraMod.Log?.LogInfo("ManagerCameraBootstrap: Scene change detected - custom camera deactivated.");
@@ -807,6 +1244,13 @@ public class ManagerCameraBootstrap : MonoBehaviour
             _ball = null;
             _lastMainCamera = null;
             _matchBuilder = null;
+            _originalMainTag = "MainCamera";
+            _players.Clear();
+            _managers.Clear();
         }
     }
 }
+
+
+
+
