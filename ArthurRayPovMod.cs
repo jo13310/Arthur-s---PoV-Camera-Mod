@@ -52,9 +52,9 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     private const string MatchBuilderRoot = "MatchPlaybackController/MatchComponents/Match3DBuilder";
     private const string BallPath = "MatchPlaybackController/MatchComponents/Match3DBuilder/BallPrefab(Clone)";
     private const string GameScene = "MatchPlayback";
-    private const float PlayerPovForwardOffset = -0.12f;
+    private const float PlayerPovForwardOffset = -0.20f;
     private const float PlayerPovVerticalOffset = 0.02f;
-    private const float ManagerPovForwardOffset = -0.04f;
+    private const float ManagerPovForwardOffset = -0.12f;
     private const float ManagerPovVerticalOffset = 0.05f;
     private const float ManagerSidelineOffset = 18f;
     private const float ManagerSidelineBackOffset = 4f;
@@ -690,8 +690,7 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                     DisplayName = displayName,
                     InstanceId = instanceId
                 });
-
-                }
+            }
 
             if (candidates.Count > 0)
             {
@@ -768,8 +767,7 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                     DisplayName = displayName,
                     InstanceId = instanceId
                 });
-
-                }
+            }
 
             _managers.Clear();
 
@@ -973,7 +971,6 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         cleaned = cleaned.Replace("_", " ");
         return cleaned.Trim();
     }
-
 
     private Transform TryGetHead(Animator animator)
     {
@@ -1257,10 +1254,6 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         }
     }
 }
-
-
-
-
 
 
 
