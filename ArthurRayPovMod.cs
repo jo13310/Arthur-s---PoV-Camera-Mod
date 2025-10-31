@@ -64,6 +64,7 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     private const string GameScene = "MatchPlayback";
     private const float PlayerPovForwardOffset = 1.2f;
     private const float PlayerPovVerticalOffset = 0.30f;
+    private const float PlayerPovLookAheadDistance = 8f;
     private const float ManagerPovForwardOffset = -0.12f;
     private const float ManagerPovVerticalOffset = 0.05f;
     private const float ManagerSidelineOffset = 18f;
@@ -534,25 +535,17 @@ public class ArthurRayPovBootstrap : MonoBehaviour
 
         // Anchor the POV at the player's head and look towards the active ball.
         var headPosition = GetAvatarHeadPosition(_currentPlayer);
-        var forward = _currentPlayer.Root != null ? _currentPlayer.Root.forward : Vector3.forward;
-        var cameraPosition = headPosition - forward * PlayerPovForwardOffset + Vector3.up * PlayerPovVerticalOffset;
+        var heading = GetPlayerHeadingDirection(_currentPlayer);
+        var cameraPosition = headPosition - heading * PlayerPovForwardOffset + Vector3.up * PlayerPovVerticalOffset;
 
         _customCamera.transform.position = cameraPosition;
 
-        Vector3 lookTarget;
-        if (_ball != null)
-        {
-            lookTarget = _ball.position;
-        }
-        else
-        {
-            lookTarget = headPosition + forward * 5f;
-        }
+        var lookTarget = headPosition + heading * PlayerPovLookAheadDistance;
 
         var lookDirection = lookTarget - headPosition;
         if (lookDirection.sqrMagnitude < 0.0001f)
         {
-            lookDirection = forward;
+            lookDirection = heading;
         }
 
         _customCamera.transform.rotation = Quaternion.LookRotation(lookDirection.normalized, Vector3.up);
@@ -867,6 +860,29 @@ public class ArthurRayPovBootstrap : MonoBehaviour
 
         _smoothedBallPosition = Vector3.Lerp(_smoothedBallPosition, fallbackGround, lerpFactor);
         return _smoothedBallPosition;
+    }
+
+    private Vector3 GetPlayerHeadingDirection(Avatar player)
+    {
+        Vector3 heading = Vector3.forward;
+
+        if (player != null && player.Root != null)
+        {
+            heading = player.Root.forward;
+        }
+
+        heading.y = 0f;
+        var magnitude = heading.magnitude;
+        if (magnitude < 0.0001f)
+        {
+            heading = Vector3.forward;
+        }
+        else
+        {
+            heading /= magnitude;
+        }
+
+        return heading;
     }
 
     private void ClearPendingRestore()
