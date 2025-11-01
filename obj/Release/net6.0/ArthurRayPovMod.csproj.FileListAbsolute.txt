@@ -1,13 +1,10 @@
 C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\ArthurRayPovMod.deps.json
 C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\ArthurRayPovMod.dll
 C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\ArthurRayPovMod.pdb
-C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\UnityEngine.AnimationModule.dll
 C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\UnityEngine.CoreModule.dll
 C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\UnityEngine.dll
-C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\UnityEngine.IMGUIModule.dll
 C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\UnityEngine.InputLegacyModule.dll
 C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\UnityEngine.InputModule.dll
-C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\UnityEngine.TextRenderingModule.dll
 C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\UnityEngine.SharedInternalsModule.dll
 C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\UnityEngine.TextCoreFontEngineModule.dll
 C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26\Mods\Arthur-s---PoV-Camera-Mod\bin\Release\net6.0\UnityEngine.TextCoreTextEngineModule.dll

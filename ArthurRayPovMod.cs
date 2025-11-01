@@ -10,6 +10,61 @@ using Object = UnityEngine.Object;
 
 namespace ArthurRayPovMod;
 
+public class PIDController
+{
+    private float _proportionalGain;
+    private float _integralGain;
+    private float _derivativeGain;
+    private float _integral;
+    private float _previousError;
+    private float _previousTime;
+
+    public PIDController(float proportionalGain, float integralGain, float derivativeGain)
+    {
+        _proportionalGain = proportionalGain;
+        _integralGain = integralGain;
+        _derivativeGain = derivativeGain;
+        Reset();
+    }
+
+    public float Update(float currentError, float deltaTime, float time = -1f)
+    {
+        if (time < 0f)
+            time = Time.unscaledTime;
+
+        var dt = time - _previousTime;
+        if (dt <= 0f)
+            return 0f;
+
+        // Proportional term
+        var proportional = _proportionalGain * currentError;
+
+        // Integral term
+        _integral += currentError * dt;
+        var integral = _integralGain * _integral;
+
+        // Derivative term
+        var derivative = _derivativeGain * ((currentError - _previousError) / dt);
+
+        // Calculate output
+        var output = proportional + integral + derivative;
+
+        // Store values for next iteration
+        _previousError = currentError;
+        _previousTime = time;
+
+        // Clamp output to prevent oscillation
+        return Mathf.Clamp(output, -1f, 1f);
+    }
+
+    public void Reset()
+    {
+        _integral = 0f;
+        _previousError = 0f;
+        _previousTime = Time.unscaledTime;
+    }
+}
+
 [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
 public class ArthurRayPovMod : BasePlugin
 {
@@ -63,8 +118,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     };
     private const string GameScene = "MatchPlayback";
     private const float PlayerPovForwardOffset = 4.6f;
-    private const float PlayerPovVerticalOffset = 0.9f;
-    private const float PlayerPovLookHeightOffset = 1.8f;
+    private const float PlayerPovVerticalOffset = 0.7f;  // Lowered for better POV
+    private const float PlayerPovLookHeightOffset = 1.5f;  // Lowered for better POV
     private const float ManagerPovForwardOffset = -0.12f;
     private const float ManagerPovVerticalOffset = 0.05f;
     private const float ManagerSidelineOffset = 18f;
@@ -78,10 +133,36 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     public KeyCode previousPlayerKey = KeyCode.F3;
     public KeyCode nextPlayerKey = KeyCode.F4;
     public KeyCode managerPovKey = KeyCode.F5;
+    public KeyCode vrPovKey = KeyCode.F6;
+    public float vrInterPupillaryDistance = 0.064f;
+    public float vrFieldOfView = 96f;
+    public bool vrAutoFollowBallCarrier = true;
     public bool copySettingsFromMain = true;
 
     private ManualLogSource _logger;
 
+    // PID Controllers for smooth camera movement
+    private PIDController _positionPIDX;
+    private PIDController _positionPIDY;
+    private PIDController _positionPIDZ;
+    private PIDController _rotationPIDX;
+    private PIDController _rotationPIDY;
+    private PIDController _rotationPIDZ;
+
+    // Smooth movement parameters
+    public float positionSmoothingStrength = 2.0f;
+    public float rotationSmoothingStrength = 3.0f;
+    public float playerTransitionDuration = 0.8f;
+    
+    // POV persistence
+    private bool _isPovModeActive = false;
+    private bool _vrFreeLookEnabled = true;
+    
+    // Smooth transitions
+    private Vector3 _currentCameraVelocity;
+    private float _currentPlayerTransitionTime;
+    private Avatar _transitionTargetPlayer;
+    
     private Transform _ball;
     private Camera _lastMainCamera;
     private Camera _customCamera;
@@ -92,6 +173,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     private Transform _matchBuilder;
     private CameraMode _cameraMode = CameraMode.None;
     private bool _autoFollowBallCarrier;
+    private VrRig _vrRig;
+    private bool _vrRigActive;
     private readonly List<Avatar> _players = new();
     private readonly List<Avatar> _managers = new();
     private Avatar _currentPlayer;
@@ -125,7 +208,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     {
         None = 0,
         PlayerPov = 1,
-        ManagerPov = 2
+        ManagerPov = 2,
+        VrPov = 3
     }
 
     private struct CustomCameraState
@@ -150,6 +234,14 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     public void Init(ManualLogSource logger)
     {
         _logger = logger;
+        
+        // Initialize PID controllers
+        _positionPIDX = new PIDController(positionSmoothingStrength, 0f, 0f);
+        _positionPIDY = new PIDController(positionSmoothingStrength, 0f, 0f);
+        _positionPIDZ = new PIDController(positionSmoothingStrength, 0f, 0f);
+        _rotationPIDX = new PIDController(rotationSmoothingStrength, 0f, 0f);
+        _rotationPIDY = new PIDController(rotationSmoothingStrength, 0f, 0f);
+        _rotationPIDZ = new PIDController(rotationSmoothingStrength, 0f, 0f);
     }
     
     private void Update()
@@ -236,6 +328,14 @@ public class ArthurRayPovBootstrap : MonoBehaviour
 
         if (NewInputWasPressedThisFrame(ballCarrierPovKey))
         {
+            // Toggle POV persistence
+            if (_isPovModeActive && _cameraMode == CameraMode.PlayerPov)
+            {
+                _isPovModeActive = false;
+                ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: POV persistence disabled.");
+                return;
+            }
+            
             ActivatePlayerPov(autoFollowBallCarrier: true);
         }
 
@@ -260,6 +360,41 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                 CyclePlayer(1);
         }
 
+        if (NewInputWasPressedThisFrame(vrPovKey))
+        {
+            ActivateVrPov();
+        }
+
+        // Handle VR free look
+        if (_cameraMode == CameraMode.VrPov && _vrFreeLookEnabled)
+        {
+            float mouseLookX = 0f;
+            float mouseLookY = 0f;
+            
+            try
+            {
+                if (UnityEngine.Input.GetMouseButton(0)) // Right mouse button
+                mouseLookX = UnityEngine.Input.GetAxis("Mouse X");
+                mouseLookY = UnityEngine.Input.GetAxis("Mouse Y");
+            }
+            catch
+            {
+                // Fallback if mouse input not available
+            var horizontal = UnityEngine.Input.GetAxis("Horizontal");
+                var vertical = UnityEngine.Input.GetAxis("Vertical");
+                mouseLookX = horizontal * 2f;
+                mouseLookY = vertical * 2f;
+            }
+            
+            // Apply look to VR rig
+            if (_vrRig != null && _vrRigActive && _currentPlayer != null && _currentPlayer.IsValid)
+            {
+                var currentRotation = _vrRig._headTransform.rotation;
+                var mouseRotation = Quaternion.Euler(mouseLookY * -2f, mouseLookX * 2f, 0f);
+                _vrRig._headTransform.rotation = currentRotation * mouseRotation;
+            }
+        }
+
         // While active, keep aiming at the ball; if anything disappears, auto-deactivate
         if (_customCameraActive)
         {
@@ -270,6 +405,9 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                     break;
                 case CameraMode.ManagerPov:
                     UpdateManagerPovCamera();
+                    break;
+                case CameraMode.VrPov:
+                    UpdateVrPovCamera();
                     break;
             }
         }
@@ -359,6 +497,7 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         var stateChanged = _cameraMode != CameraMode.PlayerPov || !_customCameraActive || _autoFollowBallCarrier != autoFollowBallCarrier;
 
         _cameraMode = CameraMode.PlayerPov;
+        _isPovModeActive = true;  // Enable POV persistence
         _autoFollowBallCarrier = autoFollowBallCarrier;
         _currentManager = null;
         _currentManagerIndex = -1;
@@ -378,6 +517,9 @@ public class ArthurRayPovBootstrap : MonoBehaviour
 
             _currentPlayer = _players[_currentPlayerIndex];
         }
+
+        // Reset PID controllers when switching players
+        ResetPIDs();
 
         if (stateChanged)
         {
@@ -481,20 +623,121 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         if (_players.Count == 0)
             return;
 
-        if (_currentPlayerIndex < 0 || _currentPlayerIndex >= _players.Count)
+        var targetIndex = _currentPlayerIndex;
+        if (targetIndex < 0 || targetIndex >= _players.Count)
         {
-            _currentPlayerIndex = direction > 0 ? 0 : _players.Count - 1;
+            targetIndex = direction > 0 ? 0 : _players.Count - 1;
         }
         else
         {
-            _currentPlayerIndex = (_currentPlayerIndex + direction) % _players.Count;
-            if (_currentPlayerIndex < 0)
-                _currentPlayerIndex += _players.Count;
+            targetIndex = (targetIndex + direction) % _players.Count;
+            if (targetIndex < 0)
+                targetIndex += _players.Count;
         }
 
-        _currentPlayer = _players[_currentPlayerIndex];
+        // Start smooth transition
+        _transitionTargetPlayer = _players[targetIndex];
+        _currentPlayerTransitionTime = 0f;
         _autoFollowBallCarrier = false;
-        ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: POV switched to {_currentPlayer.DisplayName}.");
+        
+        ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: POV transitioning to {_transitionTargetPlayer.DisplayName}.");
+    }
+
+    private void ActivateVrPov()
+    {
+        if (!EnableCustomCamera())
+            return;
+
+        _cameraMode = CameraMode.VrPov;
+        _autoFollowBallCarrier = vrAutoFollowBallCarrier;
+        _currentManager = null;
+        _currentManagerIndex = -1;
+        _currentPlayer = null;
+        _currentPlayerIndex = -1;
+
+        if (_vrRig == null)
+        {
+            _vrRig = new VrRig();
+            _vrRig.Initialize(_customCamera);
+            _vrRig.SetInterpupillaryDistance(vrInterPupillaryDistance);
+            _vrRig.SetFieldOfView(vrFieldOfView);
+        }
+
+        if (!_vrRigActive)
+        {
+            _vrRig.SetActive(true);
+            _vrRigActive = true;
+        }
+
+        ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: VR POV camera active.");
+    }
+
+    private void UpdateVrPovCamera()
+    {
+        if (!_customCameraActive || _customCamera == null || _vrRig == null || !_vrRigActive)
+            return;
+
+        EnsureBallReference();
+        EnsurePlayerList();
+
+        if (vrAutoFollowBallCarrier)
+        {
+            var carrier = FindClosestPlayerToBall();
+            if (carrier != null)
+            {
+                SetCurrentPlayer(carrier);
+            }
+        }
+
+        Vector3 vrTargetPosition;
+        Quaternion vrTargetRotation;
+
+        if (_currentPlayer != null && _currentPlayer.IsValid)
+        {
+            var headPosition = GetAvatarHeadPosition(_currentPlayer);
+            var forward = _currentPlayer.Root != null ? _currentPlayer.Root.forward : Vector3.forward;
+            forward.y = 0f;
+
+            if (forward.sqrMagnitude < 0.0001f)
+                forward = Vector3.forward;
+            else
+                forward.Normalize();
+
+            vrTargetPosition = headPosition - forward * PlayerPovForwardOffset + Vector3.up * PlayerPovVerticalOffset;
+
+            Vector3 vrLookTarget;
+            if (_ball != null)
+            {
+                vrLookTarget = _ball.position + Vector3.up * PlayerPovLookHeightOffset;
+            }
+            else
+            {
+                vrLookTarget = headPosition + forward * 7.5f + Vector3.up * (PlayerPovLookHeightOffset + 0.6f);
+            }
+
+            var vrLookDirection = vrLookTarget - headPosition;
+            if (vrLookDirection.sqrMagnitude < 0.0001f)
+            {
+                vrLookDirection = forward + Vector3.up * PlayerPovLookHeightOffset;
+            }
+
+            vrTargetRotation = Quaternion.LookRotation(vrLookDirection.normalized, Vector3.up);
+        }
+        else
+        {
+            if (_ball != null)
+            {
+                vrTargetPosition = _ball.position + Vector3.up * 1.6f;
+                vrTargetRotation = Quaternion.LookRotation(_ball.position - vrTargetPosition, Vector3.up);
+            }
+            else
+            {
+                vrTargetPosition = _customCamera.transform.position;
+                vrTargetRotation = _customCamera.transform.rotation;
+            }
+        }
+
+        _vrRig.UpdateRig(vrTargetPosition, vrTargetRotation);
     }
 
     private void UpdatePlayerPovCamera()
@@ -504,6 +747,59 @@ public class ArthurRayPovBootstrap : MonoBehaviour
 
         EnsureBallReference();
         EnsurePlayerList();
+
+        // Handle smooth player transitions
+        if (_transitionTargetPlayer != null && _transitionTargetPlayer.IsValid)
+        {
+            _currentPlayerTransitionTime += Time.unscaledDeltaTime;
+            var transitionProgress = Mathf.Clamp01(_currentPlayerTransitionTime / playerTransitionDuration);
+            
+            if (transitionProgress >= 1.0f)
+            {
+                // Transition complete
+                _currentPlayer = _transitionTargetPlayer;
+                _currentPlayerIndex = _players.FindIndex(p => p.InstanceId == _transitionTargetPlayer.InstanceId);
+                _transitionTargetPlayer = null;
+                _currentPlayerTransitionTime = 0f;
+                ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: POV switched to {_currentPlayer.DisplayName}.");
+            }
+            else
+            {
+                // Continue transition
+                var startPos = GetAvatarHeadPosition(_currentPlayer) ?? _customCamera.transform.position;
+                var endPos = GetAvatarHeadPosition(_transitionTargetPlayer);
+                
+                var endForward = _transitionTargetPlayer.Root != null ? _transitionTargetPlayer.Root.forward : Vector3.forward;
+                endForward.y = 0f;
+                if (endForward.sqrMagnitude < 0.0001f)
+                    endForward = Vector3.forward;
+                else
+                    endForward.Normalize();
+
+                var lerpedPosition = Vector3.Lerp(startPos, endPos, transitionProgress);
+                var targetPos = lerpedPosition - endForward * PlayerPovForwardOffset + Vector3.up * PlayerPovVerticalOffset;
+
+                Vector3 transitionLookTarget;
+                if (_ball != null)
+                {
+                    transitionLookTarget = _ball.position + Vector3.up * PlayerPovLookHeightOffset;
+                }
+                else
+                {
+                    transitionLookTarget = lerpedPosition + endForward * 7.5f + Vector3.up * (PlayerPovLookHeightOffset + 0.6f);
+                }
+
+                var lookDirection = transitionLookTarget - lerpedPosition;
+                if (lookDirection.sqrMagnitude < 0.0001f)
+                {
+                    lookDirection = endForward + Vector3.up * PlayerPovLookHeightOffset;
+                }
+
+                var targetRotation = Quaternion.LookRotation(lookDirection.normalized, Vector3.up);
+                SmoothUpdateCamera(targetPos, targetRotation);
+                return;
+            }
+        }
 
         if (_autoFollowBallCarrier)
         {
@@ -525,8 +821,7 @@ public class ArthurRayPovBootstrap : MonoBehaviour
             if (_ball != null)
             {
                 var fallbackPosition = _ball.position + Vector3.up * 1.6f;
-                _customCamera.transform.position = fallbackPosition;
-                _customCamera.transform.LookAt(_ball);
+                SmoothUpdateCamera(fallbackPosition, Quaternion.LookRotation(_ball.position - fallbackPosition, Vector3.up));
             }
             return;
         }
@@ -542,9 +837,7 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         else
             forward.Normalize();
 
-        var cameraPosition = headPosition - forward * PlayerPovForwardOffset + Vector3.up * PlayerPovVerticalOffset;
-
-        _customCamera.transform.position = cameraPosition;
+        var targetPosition = headPosition - forward * PlayerPovForwardOffset + Vector3.up * PlayerPovVerticalOffset;
 
         Vector3 lookTarget;
         if (_ball != null)
@@ -562,7 +855,53 @@ public class ArthurRayPovBootstrap : MonoBehaviour
             lookDirection = forward + Vector3.up * PlayerPovLookHeightOffset;
         }
 
-        _customCamera.transform.rotation = Quaternion.LookRotation(lookDirection.normalized, Vector3.up);
+        var targetRotation = Quaternion.LookRotation(lookDirection.normalized, Vector3.up);
+        SmoothUpdateCamera(targetPosition, targetRotation);
+    }
+
+    private void ResetPIDs()
+    {
+        _positionPIDX?.Reset();
+        _positionPIDY?.Reset();
+        _positionPIDZ?.Reset();
+        _rotationPIDX?.Reset();
+        _rotationPIDY?.Reset();
+        _rotationPIDZ?.Reset();
+    }
+
+    private void SmoothUpdateCamera(Vector3 targetPosition, Quaternion targetRotation)
+    {
+        var deltaTime = Time.unscaledDeltaTime;
+        
+        // Smooth position using PID controllers
+        var positionErrorX = targetPosition.x - _customCamera.transform.position.x;
+        var positionErrorY = targetPosition.y - _customCamera.transform.position.y;
+        var positionErrorZ = targetPosition.z - _customCamera.transform.position.z;
+        
+        var smoothX = _positionPIDX.Update(positionErrorX, deltaTime);
+        var smoothY = _positionPIDY.Update(positionErrorY, deltaTime);
+        var smoothZ = _positionPIDZ.Update(positionErrorZ, deltaTime);
+        
+        var smoothPosition = _customCamera.transform.position + new Vector3(smoothX, smoothY, smoothZ) * positionSmoothingStrength;
+        
+        // Smooth rotation using PID controllers
+        var currentEuler = _customCamera.transform.rotation.eulerAngles;
+        var targetEuler = targetRotation.eulerAngles;
+        
+        // Handle angle wrapping
+        var rotErrorX = Mathf.DeltaAngle(currentEuler.x, targetEuler.x);
+        var rotErrorY = Mathf.DeltaAngle(currentEuler.y, targetEuler.y);
+        var rotErrorZ = Mathf.DeltaAngle(currentEuler.z, targetEuler.z);
+        
+        var smoothRotX = _rotationPIDX.Update(rotErrorX, deltaTime);
+        var smoothRotY = _rotationPIDY.Update(rotErrorY, deltaTime);
+        var smoothRotZ = _rotationPIDZ.Update(rotErrorZ, deltaTime);
+        
+        var smoothEuler = currentEuler + new Vector3(smoothRotX, smoothRotY, smoothRotZ) * rotationSmoothingStrength;
+        var smoothRotation = Quaternion.Euler(smoothEuler);
+        
+        _customCamera.transform.position = smoothPosition;
+        _customCamera.transform.rotation = smoothRotation;
     }
 
     private void UpdateManagerPovCamera()
@@ -1560,6 +1899,12 @@ public class ArthurRayPovBootstrap : MonoBehaviour
             if (dueToSceneChange)
                 ClearPendingRestore();
 
+            if (_vrRig != null && _vrRigActive)
+            {
+                _vrRig.SetActive(false);
+                _vrRigActive = false;
+            }
+
             if (_customCamera != null)
             {
                 _customCamera.enabled = false;
@@ -1642,5 +1987,121 @@ public class ArthurRayPovBootstrap : MonoBehaviour
             _hasSmoothedBall = false;
             _smoothedBallPosition = Vector3.zero;
         }
+    }
+}
+
+public class VrRig
+{
+    private Camera _leftEyeCamera;
+    private Camera _rightEyeCamera;
+    private GameObject _rigRoot;
+    public Transform _headTransform;
+    private float _interpupillaryDistance = 0.064f;
+    private float _fieldOfView = 96f;
+    private bool _isActive;
+
+    public void Initialize(Camera sourceCamera)
+    {
+        if (sourceCamera == null)
+            return;
+
+        _rigRoot = new GameObject("VRCameraRig");
+        _headTransform = _rigRoot.transform;
+
+        // Create left eye camera
+        var leftEyeGo = new GameObject("LeftEye");
+        leftEyeGo.transform.SetParent(_headTransform);
+        _leftEyeCamera = leftEyeGo.AddComponent<Camera>();
+
+        // Create right eye camera
+        var rightEyeGo = new GameObject("RightEye");
+        rightEyeGo.transform.SetParent(_headTransform);
+        _rightEyeCamera = rightEyeGo.AddComponent<Camera>();
+
+        // Copy settings from source camera
+        CopyCameraSettings(sourceCamera, _leftEyeCamera);
+        CopyCameraSettings(sourceCamera, _rightEyeCamera);
+
+        // Set up stereo rendering
+        _leftEyeCamera.stereoTargetEye = StereoTargetEyeMask.Left;
+        _rightEyeCamera.stereoTargetEye = StereoTargetEyeMask.Right;
+        _rightEyeCamera.enabled = false; // Only left eye renders main, right eye renders for stereo
+
+        UpdateEyePositions();
+    }
+
+    public void SetActive(bool active)
+    {
+        _isActive = active;
+        if (_rigRoot != null)
+            _rigRoot.SetActive(active);
+
+        if (active && _leftEyeCamera != null)
+        {
+            _leftEyeCamera.enabled = true;
+            _leftEyeCamera.tag = "MainCamera";
+        }
+        else if (_leftEyeCamera != null)
+        {
+            _leftEyeCamera.enabled = false;
+            _leftEyeCamera.tag = "Untagged";
+        }
+    }
+
+    public void SetInterpupillaryDistance(float ipd)
+    {
+        _interpupillaryDistance = Mathf.Max(0.01f, ipd);
+        UpdateEyePositions();
+    }
+
+    public void SetFieldOfView(float fov)
+    {
+        _fieldOfView = Mathf.Clamp(fov, 30f, 150f);
+        if (_leftEyeCamera != null)
+            _leftEyeCamera.fieldOfView = _fieldOfView;
+        if (_rightEyeCamera != null)
+            _rightEyeCamera.fieldOfView = _fieldOfView;
+    }
+
+    public void UpdateRig(Vector3 position, Quaternion rotation)
+    {
+        if (!_isActive || _headTransform == null)
+            return;
+
+        _headTransform.position = position;
+        _headTransform.rotation = rotation;
+    }
+
+    private void UpdateEyePositions()
+    {
+        if (_leftEyeCamera != null && _rightEyeCamera != null)
+        {
+            var halfIpd = _interpupillaryDistance * 0.5f;
+            _leftEyeCamera.transform.localPosition = new Vector3(-halfIpd, 0f, 0f);
+            _rightEyeCamera.transform.localPosition = new Vector3(halfIpd, 0f, 0f);
+        }
+    }
+
+    private void CopyCameraSettings(Camera source, Camera target)
+    {
+        if (source == null || target == null)
+            return;
+
+        target.fieldOfView = source.fieldOfView;
+        target.nearClipPlane = source.nearClipPlane;
+        target.farClipPlane = source.farClipPlane;
+        target.allowHDR = source.allowHDR;
+        target.allowMSAA = source.allowMSAA;
+        target.clearFlags = source.clearFlags;
+        target.backgroundColor = source.backgroundColor;
+        target.cullingMask = source.cullingMask;
+        target.depth = source.depth;
+    }
+
+    public void Cleanup()
+    {
+        SetActive(false);
+        if (_rigRoot != null)
+            Object.DestroyImmediate(_rigRoot);
     }
 }
