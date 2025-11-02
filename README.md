@@ -1,41 +1,67 @@
-🎥 MOD CAMERA – Arthur Ray Edition ⚽
+# ArthurRay PoV Camera Mod
 
+Immersive first-person and manager-view camera pack for Football Manager 2026. Switch cameras on demand or let the mod automatically jump into POV mode for key match events (goals, free-kicks, corners, penalties, and replays) to make every highlight feel like you are on the pitch.
 
+## Features
 
-📁 Chemin d’installation -- Dézipper le fichier BepInEx+Cameramod.rar :
+- Hotkeys: `F1` classic FM camera, `F2` player POV, `F3` previous player, `F4` next player, `F5` manager zone POV, `F6` toggle Auto-POV mode.
+- Auto-POV slows match speed for dramatic moments and restores your original speed afterwards.
+- Context-aware POV selection (penalties switch to shooter/goalkeeper, set pieces follow the taker, etc.).
+- Built for BepInEx IL2CPP 6.x; installs cleanly through FM Reloaded Mod Manager using the included manifest.
 
-C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26
+## Requirements
 
+- Football Manager 2026 (Steam build).
+- FM Reloaded Mod Manager `0.5.0` or later.
+- BepInEx 6 (IL2CPP) bootstrap already installed in your FM directory.
 
-🧩 Fonctionnalités :
+## Installation
 
-🎮 F1 → Caméra FM classique
+### Through FM Reloaded (recommended)
 
-👁️ F2 → POV Auto Player (vue à la première personne du joueur en action)
+1. Download the latest `ArthurRay PoV Camera Mod` release ZIP from GitHub (the asset already contains `manifest.json`).
+2. In FM Reloaded Mod Manager, open **Mod Store** or **Install from ZIP**.
+3. Pick the downloaded archive; the manager will detect the manifest and copy `plugins/ArthurRayPovMod.dll` to `BepInEx/plugins/`.
+4. Enable the mod and launch the game.
 
-⬅️ F3 → Joueur précédent
+### Manual install
 
-➡️ F4 → Joueur suivant
+1. Extract the release ZIP.
+2. Copy `plugins/ArthurRayPovMod.dll` into your `Football Manager 26/BepInEx/plugins/` folder.
+3. (Optional) Keep the root `manifest.json` for future updates via FM Reloaded.
 
-🧠 F5 → Manager Cam (vue depuis la zone technique)
+## Building from Source
 
-⚡ F6 → Activer/Désactiver le MODE AUTO-POV
+1. Open `SourceCode/ArthurRayPovMod.sln` with Visual Studio 2022.
+2. Restore NuGet packages (BepInEx feed is already listed in the `.csproj`).
+3. Build in `Release` configuration; the DLL will appear in `SourceCode/bin/Release/net6.0/ArthurRayPovMod.dll`.
+4. Place the built DLL in the `plugins/` folder and regenerate the release ZIP if needed.
 
+## Manifest Overview
 
+The repository root contains a `manifest.json` that FM Reloaded uses during installation:
 
-💬 Immersion totale garantie – passez du banc au terrain en une touche ! 🔥
+```json
+{
+  "name": "ArthurRay PoV Camera Mod",
+  "version": "1.0.0",
+  "type": "misc",
+  "author": "GerKo & Brululul",
+  "files": [
+    {
+      "source": "plugins/ArthurRayPovMod.dll",
+      "target_subpath": "BepInEx/plugins/ArthurRayPovMod.dll",
+      "platform": "windows"
+    }
+  ]
+}
+```
 
-✨ MODE AUTO-POV INTELLIGENT (Appuyez sur F6) :
-   • 🎥 Reste en caméra FM normale par défaut
-   • 🔴 Indicateur "● REC" en haut à droite quand actif
-   • ⚽ S'active automatiquement pour : Buts, Coups francs, Corners, Penalties, Ralentis
-   • 🐌 Ralentit le match à 0.8x pendant les actions POV pour plus d'immersion
-   • ⏱️ Retour automatique à la caméra normale après l'action (+ 2 secondes de délai)
-   • ⚡ Restaure la vitesse de match originale automatiquement
+Keep the manifest updated whenever you ship a new version so the Mod Manager can verify compatibility and perform clean installs.
 
-📝 Comportement intelligent :
-   • Penalty MON équipe → POV derrière le tireur
-   • Penalty ADVERSE → POV derrière MON gardien
-   • Coup franc / Corner → POV derrière le tireur
-   • But / Replay → POV du buteur spécifique
+## License & Credits
 
+- Plugin by **GerKo & Brululul** with contributions from the FM Reloaded community.
+- Powered by [BepInEx](https://github.com/BepInEx/BepInEx) and Harmony.
+
+For issues or feature requests, open an issue on [GitHub](https://github.com/jo13310/Arthur-s---PoV-Camera-Mod/issues) or join the FM Reloaded Discord.
