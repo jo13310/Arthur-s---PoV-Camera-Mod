@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(dir \"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Football Manager 26\\Mods\\Arthur-s---PoV-Camera-Mod\" /s /b)",
+      "Bash(dotnet build:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

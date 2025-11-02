@@ -10,61 +10,6 @@ using Object = UnityEngine.Object;
 
 namespace ArthurRayPovMod;
 
-public class PIDController
-{
-    private float _proportionalGain;
-    private float _integralGain;
-    private float _derivativeGain;
-    private float _integral;
-    private float _previousError;
-    private float _previousTime;
-
-    public PIDController(float proportionalGain, float integralGain, float derivativeGain)
-    {
-        _proportionalGain = proportionalGain;
-        _integralGain = integralGain;
-        _derivativeGain = derivativeGain;
-        Reset();
-    }
-
-    public float Update(float currentError, float deltaTime, float time = -1f)
-    {
-        if (time < 0f)
-            time = Time.unscaledTime;
-
-        var dt = time - _previousTime;
-        if (dt <= 0f)
-            return 0f;
-
-        // Proportional term
-        var proportional = _proportionalGain * currentError;
-
-        // Integral term
-        _integral += currentError * dt;
-        var integral = _integralGain * _integral;
-
-        // Derivative term
-        var derivative = _derivativeGain * ((currentError - _previousError) / dt);
-
-        // Calculate output
-        var output = proportional + integral + derivative;
-
-        // Store values for next iteration
-        _previousError = currentError;
-        _previousTime = time;
-
-        // Clamp output to prevent oscillation
-        return Mathf.Clamp(output, -1f, 1f);
-    }
-
-    public void Reset()
-    {
-        _integral = 0f;
-        _previousError = 0f;
-        _previousTime = Time.unscaledTime;
-    }
-}
-
 [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
 public class ArthurRayPovMod : BasePlugin
 {
@@ -118,8 +63,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     };
     private const string GameScene = "MatchPlayback";
     private const float PlayerPovForwardOffset = 4.6f;
-    private const float PlayerPovVerticalOffset = 0.7f;  // Lowered for better POV
-    private const float PlayerPovLookHeightOffset = 1.5f;  // Lowered for better POV
+    private const float PlayerPovVerticalOffset = 0.9f;
+    private const float PlayerPovLookHeightOffset = 1.8f;
     private const float ManagerPovForwardOffset = -0.12f;
     private const float ManagerPovVerticalOffset = 0.05f;
     private const float ManagerSidelineOffset = 18f;
@@ -133,36 +78,10 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     public KeyCode previousPlayerKey = KeyCode.F3;
     public KeyCode nextPlayerKey = KeyCode.F4;
     public KeyCode managerPovKey = KeyCode.F5;
-    public KeyCode vrPovKey = KeyCode.F6;
-    public float vrInterPupillaryDistance = 0.064f;
-    public float vrFieldOfView = 96f;
-    public bool vrAutoFollowBallCarrier = true;
     public bool copySettingsFromMain = true;
 
     private ManualLogSource _logger;
 
-    // PID Controllers for smooth camera movement
-    private PIDController _positionPIDX;
-    private PIDController _positionPIDY;
-    private PIDController _positionPIDZ;
-    private PIDController _rotationPIDX;
-    private PIDController _rotationPIDY;
-    private PIDController _rotationPIDZ;
-
-    // Smooth movement parameters
-    public float positionSmoothingStrength = 2.0f;
-    public float rotationSmoothingStrength = 3.0f;
-    public float playerTransitionDuration = 0.8f;
-    
-    // POV persistence
-    private bool _isPovModeActive = false;
-    private bool _vrFreeLookEnabled = true;
-    
-    // Smooth transitions
-    private Vector3 _currentCameraVelocity;
-    private float _currentPlayerTransitionTime;
-    private Avatar _transitionTargetPlayer;
-    
     private Transform _ball;
     private Camera _lastMainCamera;
     private Camera _customCamera;
@@ -173,8 +92,6 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     private Transform _matchBuilder;
     private CameraMode _cameraMode = CameraMode.None;
     private bool _autoFollowBallCarrier;
-    private VrRig _vrRig;
-    private bool _vrRigActive;
     private readonly List<Avatar> _players = new();
     private readonly List<Avatar> _managers = new();
     private Avatar _currentPlayer;
@@ -195,7 +112,44 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     private const float BallStateGraceSeconds = 0.5f;
     private bool _restoreOnNext3D;
     private CustomCameraState _pendingRestoreState;
-    
+
+    // Auto-trigger event system fields
+    public KeyCode toggleAutoTriggerKey = KeyCode.F6;
+    private bool _autoTriggerEnabled = true;
+    private int _lastProcessedEventFrame = -1;
+    private object _matchEventList;
+    private object _matchObject;
+    private System.Type _tMatchEventList;
+    private System.Type _tMatchEventData;
+    private System.Type _tMatchEventType;
+    private System.Type _tMatch;
+    private System.Reflection.PropertyInfo _matchEventDataProperty;
+    private System.Reflection.PropertyInfo _matchFrameProperty;
+    private System.Reflection.PropertyInfo _matchEventTypeProperty;
+    private bool _wasInReplay;
+    private float _replayDetectionCooldown;
+
+    // Auto-POV state management
+    private bool _autoModeCameraActive;
+    private float _originalMatchSpeed = 1.0f;
+    private int _eventStartTimeSlice;
+    private int _currentSetPieceType; // SetPieceType as int
+    private GUIStyle _recStyle;
+    private Vector3 _cameraVelocity;
+    private float _eventCompletionTimeout;
+    private const float EventTimeoutSeconds = 5f;
+
+    // Reflection for MatchPreferences speed control
+    private object _matchPreferencesObject;
+    private System.Reflection.MethodInfo _getMatchSpeedMethod;
+    private System.Reflection.MethodInfo _setMatchSpeedMethod;
+
+    // Reflection for StopTimeInfo access
+    private System.Reflection.FieldInfo _stopTimeInfosField;
+    private System.Type _tStopTimeInfo;
+    private System.Reflection.FieldInfo _stopTimeSliceField;
+    private System.Reflection.FieldInfo _setPieceTypeField;
+
     // Reflection caches for Unity Input System (if present)
     private System.Type _tKeyboard;
     private System.Type _tKeyEnum;
@@ -208,8 +162,7 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     {
         None = 0,
         PlayerPov = 1,
-        ManagerPov = 2,
-        VrPov = 3
+        ManagerPov = 2
     }
 
     private struct CustomCameraState
@@ -234,14 +187,6 @@ public class ArthurRayPovBootstrap : MonoBehaviour
     public void Init(ManualLogSource logger)
     {
         _logger = logger;
-        
-        // Initialize PID controllers
-        _positionPIDX = new PIDController(positionSmoothingStrength, 0f, 0f);
-        _positionPIDY = new PIDController(positionSmoothingStrength, 0f, 0f);
-        _positionPIDZ = new PIDController(positionSmoothingStrength, 0f, 0f);
-        _rotationPIDX = new PIDController(rotationSmoothingStrength, 0f, 0f);
-        _rotationPIDY = new PIDController(rotationSmoothingStrength, 0f, 0f);
-        _rotationPIDZ = new PIDController(rotationSmoothingStrength, 0f, 0f);
     }
     
     private void Update()
@@ -328,14 +273,6 @@ public class ArthurRayPovBootstrap : MonoBehaviour
 
         if (NewInputWasPressedThisFrame(ballCarrierPovKey))
         {
-            // Toggle POV persistence
-            if (_isPovModeActive && _cameraMode == CameraMode.PlayerPov)
-            {
-                _isPovModeActive = false;
-                ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: POV persistence disabled.");
-                return;
-            }
-            
             ActivatePlayerPov(autoFollowBallCarrier: true);
         }
 
@@ -360,39 +297,32 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                 CyclePlayer(1);
         }
 
-        if (NewInputWasPressedThisFrame(vrPovKey))
+        // Toggle auto-trigger functionality
+        if (NewInputWasPressedThisFrame(toggleAutoTriggerKey))
         {
-            ActivateVrPov();
+            _autoTriggerEnabled = !_autoTriggerEnabled;
+            ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: Auto-trigger for match events {(_autoTriggerEnabled ? "enabled" : "disabled")}");
         }
 
-        // Handle VR free look
-        if (_cameraMode == CameraMode.VrPov && _vrFreeLookEnabled)
+        // Check for match events and auto-trigger POV if enabled
+        if (_autoTriggerEnabled && match3DActive)
         {
-            float mouseLookX = 0f;
-            float mouseLookY = 0f;
-            
-            try
-            {
-                if (UnityEngine.Input.GetMouseButton(0)) // Right mouse button
-                mouseLookX = UnityEngine.Input.GetAxis("Mouse X");
-                mouseLookY = UnityEngine.Input.GetAxis("Mouse Y");
-            }
-            catch
-            {
-                // Fallback if mouse input not available
-            var horizontal = UnityEngine.Input.GetAxis("Horizontal");
-                var vertical = UnityEngine.Input.GetAxis("Vertical");
-                mouseLookX = horizontal * 2f;
-                mouseLookY = vertical * 2f;
-            }
-            
-            // Apply look to VR rig
-            if (_vrRig != null && _vrRigActive && _currentPlayer != null && _currentPlayer.IsValid)
-            {
-                var currentRotation = _vrRig._headTransform.rotation;
-                var mouseRotation = Quaternion.Euler(mouseLookY * -2f, mouseLookX * 2f, 0f);
-                _vrRig._headTransform.rotation = currentRotation * mouseRotation;
-            }
+            CheckMatchEventsAndAutoTrigger();
+            CheckReplayStateAndAutoTrigger();
+        }
+
+        // Auto-return to normal camera when event is complete
+        if (_autoModeCameraActive && IsEventComplete())
+        {
+            ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: Event complete, returning to normal camera");
+
+            // Restore match speed
+            RestoreMatchSpeed();
+
+            // Deactivate custom camera
+            DisableCustomCamera(false);
+
+            _autoModeCameraActive = false;
         }
 
         // While active, keep aiming at the ball; if anything disappears, auto-deactivate
@@ -405,9 +335,6 @@ public class ArthurRayPovBootstrap : MonoBehaviour
                     break;
                 case CameraMode.ManagerPov:
                     UpdateManagerPovCamera();
-                    break;
-                case CameraMode.VrPov:
-                    UpdateVrPovCamera();
                     break;
             }
         }
@@ -497,7 +424,6 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         var stateChanged = _cameraMode != CameraMode.PlayerPov || !_customCameraActive || _autoFollowBallCarrier != autoFollowBallCarrier;
 
         _cameraMode = CameraMode.PlayerPov;
-        _isPovModeActive = true;  // Enable POV persistence
         _autoFollowBallCarrier = autoFollowBallCarrier;
         _currentManager = null;
         _currentManagerIndex = -1;
@@ -517,9 +443,6 @@ public class ArthurRayPovBootstrap : MonoBehaviour
 
             _currentPlayer = _players[_currentPlayerIndex];
         }
-
-        // Reset PID controllers when switching players
-        ResetPIDs();
 
         if (stateChanged)
         {
@@ -623,121 +546,20 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         if (_players.Count == 0)
             return;
 
-        var targetIndex = _currentPlayerIndex;
-        if (targetIndex < 0 || targetIndex >= _players.Count)
+        if (_currentPlayerIndex < 0 || _currentPlayerIndex >= _players.Count)
         {
-            targetIndex = direction > 0 ? 0 : _players.Count - 1;
+            _currentPlayerIndex = direction > 0 ? 0 : _players.Count - 1;
         }
         else
         {
-            targetIndex = (targetIndex + direction) % _players.Count;
-            if (targetIndex < 0)
-                targetIndex += _players.Count;
+            _currentPlayerIndex = (_currentPlayerIndex + direction) % _players.Count;
+            if (_currentPlayerIndex < 0)
+                _currentPlayerIndex += _players.Count;
         }
 
-        // Start smooth transition
-        _transitionTargetPlayer = _players[targetIndex];
-        _currentPlayerTransitionTime = 0f;
+        _currentPlayer = _players[_currentPlayerIndex];
         _autoFollowBallCarrier = false;
-        
-        ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: POV transitioning to {_transitionTargetPlayer.DisplayName}.");
-    }
-
-    private void ActivateVrPov()
-    {
-        if (!EnableCustomCamera())
-            return;
-
-        _cameraMode = CameraMode.VrPov;
-        _autoFollowBallCarrier = vrAutoFollowBallCarrier;
-        _currentManager = null;
-        _currentManagerIndex = -1;
-        _currentPlayer = null;
-        _currentPlayerIndex = -1;
-
-        if (_vrRig == null)
-        {
-            _vrRig = new VrRig();
-            _vrRig.Initialize(_customCamera);
-            _vrRig.SetInterpupillaryDistance(vrInterPupillaryDistance);
-            _vrRig.SetFieldOfView(vrFieldOfView);
-        }
-
-        if (!_vrRigActive)
-        {
-            _vrRig.SetActive(true);
-            _vrRigActive = true;
-        }
-
-        ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: VR POV camera active.");
-    }
-
-    private void UpdateVrPovCamera()
-    {
-        if (!_customCameraActive || _customCamera == null || _vrRig == null || !_vrRigActive)
-            return;
-
-        EnsureBallReference();
-        EnsurePlayerList();
-
-        if (vrAutoFollowBallCarrier)
-        {
-            var carrier = FindClosestPlayerToBall();
-            if (carrier != null)
-            {
-                SetCurrentPlayer(carrier);
-            }
-        }
-
-        Vector3 vrTargetPosition;
-        Quaternion vrTargetRotation;
-
-        if (_currentPlayer != null && _currentPlayer.IsValid)
-        {
-            var headPosition = GetAvatarHeadPosition(_currentPlayer);
-            var forward = _currentPlayer.Root != null ? _currentPlayer.Root.forward : Vector3.forward;
-            forward.y = 0f;
-
-            if (forward.sqrMagnitude < 0.0001f)
-                forward = Vector3.forward;
-            else
-                forward.Normalize();
-
-            vrTargetPosition = headPosition - forward * PlayerPovForwardOffset + Vector3.up * PlayerPovVerticalOffset;
-
-            Vector3 vrLookTarget;
-            if (_ball != null)
-            {
-                vrLookTarget = _ball.position + Vector3.up * PlayerPovLookHeightOffset;
-            }
-            else
-            {
-                vrLookTarget = headPosition + forward * 7.5f + Vector3.up * (PlayerPovLookHeightOffset + 0.6f);
-            }
-
-            var vrLookDirection = vrLookTarget - headPosition;
-            if (vrLookDirection.sqrMagnitude < 0.0001f)
-            {
-                vrLookDirection = forward + Vector3.up * PlayerPovLookHeightOffset;
-            }
-
-            vrTargetRotation = Quaternion.LookRotation(vrLookDirection.normalized, Vector3.up);
-        }
-        else
-        {
-            if (_ball != null)
-            {
-                vrTargetPosition = _ball.position + Vector3.up * 1.6f;
-                vrTargetRotation = Quaternion.LookRotation(_ball.position - vrTargetPosition, Vector3.up);
-            }
-            else
-            {
-                vrTargetPosition = _customCamera.transform.position;
-                vrTargetRotation = _customCamera.transform.rotation;
-            }
-        }
-
-        _vrRig.UpdateRig(vrTargetPosition, vrTargetRotation);
+        ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: POV switched to {_currentPlayer.DisplayName}.");
     }
 
     private void UpdatePlayerPovCamera()
@@ -747,59 +569,6 @@ public class ArthurRayPovBootstrap : MonoBehaviour
 
         EnsureBallReference();
         EnsurePlayerList();
-
-        // Handle smooth player transitions
-        if (_transitionTargetPlayer != null && _transitionTargetPlayer.IsValid)
-        {
-            _currentPlayerTransitionTime += Time.unscaledDeltaTime;
-            var transitionProgress = Mathf.Clamp01(_currentPlayerTransitionTime / playerTransitionDuration);
-            
-            if (transitionProgress >= 1.0f)
-            {
-                // Transition complete
-                _currentPlayer = _transitionTargetPlayer;
-                _currentPlayerIndex = _players.FindIndex(p => p.InstanceId == _transitionTargetPlayer.InstanceId);
-                _transitionTargetPlayer = null;
-                _currentPlayerTransitionTime = 0f;
-                ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: POV switched to {_currentPlayer.DisplayName}.");
-            }
-            else
-            {
-                // Continue transition
-                var startPos = GetAvatarHeadPosition(_currentPlayer) ?? _customCamera.transform.position;
-                var endPos = GetAvatarHeadPosition(_transitionTargetPlayer);
-                
-                var endForward = _transitionTargetPlayer.Root != null ? _transitionTargetPlayer.Root.forward : Vector3.forward;
-                endForward.y = 0f;
-                if (endForward.sqrMagnitude < 0.0001f)
-                    endForward = Vector3.forward;
-                else
-                    endForward.Normalize();
-
-                var lerpedPosition = Vector3.Lerp(startPos, endPos, transitionProgress);
-                var targetPos = lerpedPosition - endForward * PlayerPovForwardOffset + Vector3.up * PlayerPovVerticalOffset;
-
-                Vector3 transitionLookTarget;
-                if (_ball != null)
-                {
-                    transitionLookTarget = _ball.position + Vector3.up * PlayerPovLookHeightOffset;
-                }
-                else
-                {
-                    transitionLookTarget = lerpedPosition + endForward * 7.5f + Vector3.up * (PlayerPovLookHeightOffset + 0.6f);
-                }
-
-                var lookDirection = transitionLookTarget - lerpedPosition;
-                if (lookDirection.sqrMagnitude < 0.0001f)
-                {
-                    lookDirection = endForward + Vector3.up * PlayerPovLookHeightOffset;
-                }
-
-                var targetRotation = Quaternion.LookRotation(lookDirection.normalized, Vector3.up);
-                SmoothUpdateCamera(targetPos, targetRotation);
-                return;
-            }
-        }
 
         if (_autoFollowBallCarrier)
         {
@@ -821,7 +590,8 @@ public class ArthurRayPovBootstrap : MonoBehaviour
             if (_ball != null)
             {
                 var fallbackPosition = _ball.position + Vector3.up * 1.6f;
-                SmoothUpdateCamera(fallbackPosition, Quaternion.LookRotation(_ball.position - fallbackPosition, Vector3.up));
+                _customCamera.transform.position = fallbackPosition;
+                _customCamera.transform.LookAt(_ball);
             }
             return;
         }
@@ -837,7 +607,9 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         else
             forward.Normalize();
 
-        var targetPosition = headPosition - forward * PlayerPovForwardOffset + Vector3.up * PlayerPovVerticalOffset;
+        var cameraPosition = headPosition - forward * PlayerPovForwardOffset + Vector3.up * PlayerPovVerticalOffset;
+
+        _customCamera.transform.position = cameraPosition;
 
         Vector3 lookTarget;
         if (_ball != null)
@@ -855,53 +627,7 @@ public class ArthurRayPovBootstrap : MonoBehaviour
             lookDirection = forward + Vector3.up * PlayerPovLookHeightOffset;
         }
 
-        var targetRotation = Quaternion.LookRotation(lookDirection.normalized, Vector3.up);
-        SmoothUpdateCamera(targetPosition, targetRotation);
-    }
-
-    private void ResetPIDs()
-    {
-        _positionPIDX?.Reset();
-        _positionPIDY?.Reset();
-        _positionPIDZ?.Reset();
-        _rotationPIDX?.Reset();
-        _rotationPIDY?.Reset();
-        _rotationPIDZ?.Reset();
-    }
-
-    private void SmoothUpdateCamera(Vector3 targetPosition, Quaternion targetRotation)
-    {
-        var deltaTime = Time.unscaledDeltaTime;
-        
-        // Smooth position using PID controllers
-        var positionErrorX = targetPosition.x - _customCamera.transform.position.x;
-        var positionErrorY = targetPosition.y - _customCamera.transform.position.y;
-        var positionErrorZ = targetPosition.z - _customCamera.transform.position.z;
-        
-        var smoothX = _positionPIDX.Update(positionErrorX, deltaTime);
-        var smoothY = _positionPIDY.Update(positionErrorY, deltaTime);
-        var smoothZ = _positionPIDZ.Update(positionErrorZ, deltaTime);
-        
-        var smoothPosition = _customCamera.transform.position + new Vector3(smoothX, smoothY, smoothZ) * positionSmoothingStrength;
-        
-        // Smooth rotation using PID controllers
-        var currentEuler = _customCamera.transform.rotation.eulerAngles;
-        var targetEuler = targetRotation.eulerAngles;
-        
-        // Handle angle wrapping
-        var rotErrorX = Mathf.DeltaAngle(currentEuler.x, targetEuler.x);
-        var rotErrorY = Mathf.DeltaAngle(currentEuler.y, targetEuler.y);
-        var rotErrorZ = Mathf.DeltaAngle(currentEuler.z, targetEuler.z);
-        
-        var smoothRotX = _rotationPIDX.Update(rotErrorX, deltaTime);
-        var smoothRotY = _rotationPIDY.Update(rotErrorY, deltaTime);
-        var smoothRotZ = _rotationPIDZ.Update(rotErrorZ, deltaTime);
-        
-        var smoothEuler = currentEuler + new Vector3(smoothRotX, smoothRotY, smoothRotZ) * rotationSmoothingStrength;
-        var smoothRotation = Quaternion.Euler(smoothEuler);
-        
-        _customCamera.transform.position = smoothPosition;
-        _customCamera.transform.rotation = smoothRotation;
+        _customCamera.transform.rotation = Quaternion.LookRotation(lookDirection.normalized, Vector3.up);
     }
 
     private void UpdateManagerPovCamera()
@@ -1716,6 +1442,29 @@ public class ArthurRayPovBootstrap : MonoBehaviour
 
     private void OnGUI()
     {
+        // Draw REC indicator when auto-trigger is enabled and in match 3D view
+        if (_autoTriggerEnabled && IsMatch3DViewActive())
+        {
+            if (_recStyle == null)
+            {
+                _recStyle = new GUIStyle();
+                if (GUI.skin != null && GUI.skin.label != null)
+                {
+                    _recStyle.font = GUI.skin.label.font;
+                    _recStyle.richText = GUI.skin.label.richText;
+                }
+                _recStyle.fontSize = 18;
+                _recStyle.alignment = TextAnchor.UpperRight;
+                _recStyle.fontStyle = FontStyle.Bold;
+                _recStyle.normal.textColor = Color.red;
+            }
+
+            float recWidth = 70f;
+            float recX = Screen.width * 0.75f;
+            Rect recRect = new Rect(recX, 10f, recWidth, 25f);
+            GUI.Label(recRect, "● REC", _recStyle);
+        }
+
         if (!_customCameraActive)
             return;
 
@@ -1783,6 +1532,579 @@ public class ArthurRayPovBootstrap : MonoBehaviour
         GUI.Label(rect, label, _hudStyle);
     }
     
+    private void CheckMatchEventsAndAutoTrigger()
+    {
+        try
+        {
+            // Try to get the MatchEventList component
+            if (_matchEventList == null)
+            {
+                if (!TryInitializeEventReflection())
+                    return;
+
+                if (_matchBuilder == null)
+                {
+                    var builderGo = GameObject.Find(MatchBuilderRoot);
+                    _matchBuilder = builderGo != null ? builderGo.transform : null;
+                }
+
+                if (_matchBuilder == null)
+                    return;
+
+                // Try to find MatchEventList in the scene
+                var matchEventListGo = GameObject.Find("MatchPlaybackController/MatchComponents");
+                if (matchEventListGo != null)
+                {
+                    var components = matchEventListGo.GetComponents<Component>();
+                    foreach (var component in components)
+                    {
+                        if (component != null && component.GetType().Name == "MatchEventList")
+                        {
+                            _matchEventList = component;
+                            break;
+                        }
+                    }
+                }
+
+                if (_matchEventList == null)
+                    return;
+            }
+
+            // Get the list of match events
+            var eventDataList = _matchEventDataProperty.GetValue(_matchEventList, null);
+            if (eventDataList == null)
+                return;
+
+            var listType = eventDataList.GetType();
+            var countProperty = listType.GetProperty("Count");
+            if (countProperty == null)
+                return;
+
+            int count = (int)countProperty.GetValue(eventDataList, null);
+            if (count == 0)
+                return;
+
+            // Check for new events since last frame
+            var getItemMethod = listType.GetMethod("get_Item");
+            if (getItemMethod == null)
+                return;
+
+            // Iterate through events starting from the last processed
+            for (int i = count - 1; i >= 0; i--)
+            {
+                var eventData = getItemMethod.Invoke(eventDataList, new object[] { i });
+                if (eventData == null)
+                    continue;
+
+                var matchFrame = (int)_matchFrameProperty.GetValue(eventData, null);
+
+                // Skip if we've already processed this frame
+                if (matchFrame <= _lastProcessedEventFrame)
+                    break;
+
+                var eventType = (int)_matchEventTypeProperty.GetValue(eventData, null);
+
+                // Check if this is an auto-trigger event
+                // FreeKick=2, CornerKick=3, PenaltyKick=4, Goal=0
+                if (eventType == 2 || eventType == 3 || eventType == 4 || eventType == 0)
+                {
+                    _lastProcessedEventFrame = matchFrame;
+
+                    string eventName = eventType switch
+                    {
+                        0 => "Goal",
+                        2 => "Free Kick",
+                        3 => "Corner Kick",
+                        4 => "Penalty Kick",
+                        _ => "Event"
+                    };
+
+                    ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: Auto-triggering POV for {eventName} at frame {matchFrame}");
+
+                    // Save match speed and slow down
+                    SaveAndSlowMatchSpeed();
+
+                    // Store event timing for completion detection
+                    _eventStartTimeSlice = matchFrame;
+                    _eventCompletionTimeout = Time.time;
+                    _currentSetPieceType = eventType; // Store as int for now
+                    _autoModeCameraActive = true;
+
+                    // For goals, try to find the goal scorer specifically
+                    if (eventType == 0)
+                    {
+                        TrySelectGoalScorer();
+                    }
+                    else
+                    {
+                        // For other events, follow ball carrier
+                        ActivatePlayerPov(autoFollowBallCarrier: true);
+                    }
+                    break;
+                }
+
+                _lastProcessedEventFrame = matchFrame;
+            }
+        }
+        catch (Exception ex)
+        {
+            ArthurRayPovMod.Log?.LogError($"ArthurRayPovBootstrap: CheckMatchEventsAndAutoTrigger failed: {ex}");
+        }
+    }
+
+    private bool TryInitializeEventReflection()
+    {
+        if (_tMatchEventList != null && _tMatchEventData != null && _tMatchEventType != null)
+            return true;
+
+        try
+        {
+            // Try to load FM.Match assembly types via reflection
+            var assemblies = System.AppDomain.CurrentDomain.GetAssemblies();
+            foreach (var assembly in assemblies)
+            {
+                if (assembly.GetName().Name.Contains("FM.Match") || assembly.FullName.Contains("FM.Match"))
+                {
+                    _tMatchEventList = assembly.GetType("FM.Match.MatchEventList");
+                    _tMatchEventData = assembly.GetType("FM.Match.MatchEventData");
+                    _tMatchEventType = assembly.GetType("FM.Match.MatchEventType");
+                    _tMatch = assembly.GetType("FM.Match.Match");
+
+                    if (_tMatchEventList != null && _tMatchEventData != null && _tMatchEventType != null)
+                        break;
+                }
+            }
+
+            // Fallback: try to get types by full name
+            if (_tMatchEventList == null)
+                _tMatchEventList = System.Type.GetType("FM.Match.MatchEventList, FM.Match");
+            if (_tMatchEventData == null)
+                _tMatchEventData = System.Type.GetType("FM.Match.MatchEventData, FM.Match");
+            if (_tMatchEventType == null)
+                _tMatchEventType = System.Type.GetType("FM.Match.MatchEventType, FM.Match");
+            if (_tMatch == null)
+                _tMatch = System.Type.GetType("FM.Match.Match, FM.Match");
+
+            if (_tMatchEventList == null || _tMatchEventData == null || _tMatchEventType == null)
+                return false;
+
+            _matchEventDataProperty = _tMatchEventList.GetProperty("MatchEventData");
+            _matchFrameProperty = _tMatchEventData.GetProperty("MatchFrame");
+            _matchEventTypeProperty = _tMatchEventData.GetProperty("MatchEventType");
+
+            return _matchEventDataProperty != null && _matchFrameProperty != null && _matchEventTypeProperty != null;
+        }
+        catch (Exception ex)
+        {
+            ArthurRayPovMod.Log?.LogWarning($"ArthurRayPovBootstrap: Failed to initialize event reflection: {ex.Message}");
+            return false;
+        }
+    }
+
+    private bool IsUserTeamEvent(object eventData)
+    {
+        try
+        {
+            if (_matchObject == null || eventData == null)
+                return false;
+
+            // Get UserTeamId from Match object (0 = Home, 1 = Away)
+            var userTeamIdProperty = _matchObject.GetType().GetProperty("UserTeamId");
+            if (userTeamIdProperty == null)
+                return false;
+
+            sbyte userTeamId = (sbyte)userTeamIdProperty.GetValue(_matchObject, null);
+
+            // Get player lists from event data
+            var homePlayersField = eventData.GetType().GetField("m_homePlayersInvolved",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var awayPlayersField = eventData.GetType().GetField("m_awayPlayersInvolved",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+            if (homePlayersField == null || awayPlayersField == null)
+                return false;
+
+            var homePlayers = homePlayersField.GetValue(eventData);
+            var awayPlayers = awayPlayersField.GetValue(eventData);
+
+            // Check count via reflection
+            var homeCountProperty = homePlayers.GetType().GetProperty("Count");
+            var awayCountProperty = awayPlayers.GetType().GetProperty("Count");
+
+            int homeCount = (int)homeCountProperty.GetValue(homePlayers, null);
+            int awayCount = (int)awayCountProperty.GetValue(awayPlayers, null);
+
+            // If user is home team and event has home players, it's user's team event
+            if (userTeamId == 0 && homeCount > 0)
+                return true;
+
+            // If user is away team and event has away players, it's user's team event
+            if (userTeamId == 1 && awayCount > 0)
+                return true;
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            ArthurRayPovMod.Log?.LogError($"ArthurRayPovBootstrap: IsUserTeamEvent failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private bool TryInitializeMatchPreferences()
+    {
+        try
+        {
+            if (_matchPreferencesObject != null && _getMatchSpeedMethod != null && _setMatchSpeedMethod != null)
+                return true;
+
+            if (_matchObject == null)
+                return false;
+
+            // Get MatchPreferences from Match object
+            var matchPrefsField = _matchObject.GetType().GetField("m_matchPreferences",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+            if (matchPrefsField == null)
+                return false;
+
+            _matchPreferencesObject = matchPrefsField.GetValue(_matchObject);
+            if (_matchPreferencesObject == null)
+                return false;
+
+            var prefsType = _matchPreferencesObject.GetType();
+            _getMatchSpeedMethod = prefsType.GetMethod("get_MatchSpeedDuringHighlights");
+            _setMatchSpeedMethod = prefsType.GetMethod("set_MatchSpeedDuringHighlights");
+
+            return _getMatchSpeedMethod != null && _setMatchSpeedMethod != null;
+        }
+        catch (Exception ex)
+        {
+            ArthurRayPovMod.Log?.LogWarning($"ArthurRayPovBootstrap: Failed to initialize MatchPreferences: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void SaveAndSlowMatchSpeed()
+    {
+        try
+        {
+            if (!TryInitializeMatchPreferences())
+                return;
+
+            // Save current speed
+            _originalMatchSpeed = (float)_getMatchSpeedMethod.Invoke(_matchPreferencesObject, null);
+
+            // Set to 0.8
+            _setMatchSpeedMethod.Invoke(_matchPreferencesObject, new object[] { 0.8f });
+
+            ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: Match speed slowed to 0.8 (was {_originalMatchSpeed})");
+        }
+        catch (Exception ex)
+        {
+            ArthurRayPovMod.Log?.LogError($"ArthurRayPovBootstrap: Failed to slow match speed: {ex.Message}");
+        }
+    }
+
+    private void RestoreMatchSpeed()
+    {
+        try
+        {
+            if (!TryInitializeMatchPreferences())
+                return;
+
+            // Restore original speed
+            _setMatchSpeedMethod.Invoke(_matchPreferencesObject, new object[] { _originalMatchSpeed });
+
+            ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: Match speed restored to {_originalMatchSpeed}");
+        }
+        catch (Exception ex)
+        {
+            ArthurRayPovMod.Log?.LogError($"ArthurRayPovBootstrap: Failed to restore match speed: {ex.Message}");
+        }
+    }
+
+    private bool TryInitializeStopTimeInfoReflection()
+    {
+        try
+        {
+            if (_stopTimeInfosField != null && _tStopTimeInfo != null)
+                return true;
+
+            if (_matchObject == null)
+                return false;
+
+            // Get m_stopTimeInfos field from Match
+            _stopTimeInfosField = _matchObject.GetType().GetField("m_stopTimeInfos",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+            if (_stopTimeInfosField == null)
+                return false;
+
+            // Get StopTimeInfo type
+            var assemblies = System.AppDomain.CurrentDomain.GetAssemblies();
+            foreach (var assembly in assemblies)
+            {
+                if (assembly.FullName.Contains("SI.Match") || assembly.GetName().Name.Contains("SI.Match"))
+                {
+                    _tStopTimeInfo = assembly.GetType("SI.Match.StopTimeInfo");
+                    if (_tStopTimeInfo != null)
+                        break;
+                }
+            }
+
+            if (_tStopTimeInfo == null)
+                _tStopTimeInfo = System.Type.GetType("SI.Match.StopTimeInfo, SI.Match");
+
+            if (_tStopTimeInfo == null)
+                return false;
+
+            _stopTimeSliceField = _tStopTimeInfo.GetField("StopTimeSlice");
+            _setPieceTypeField = _tStopTimeInfo.GetField("SetPieceType");
+
+            return _stopTimeSliceField != null && _setPieceTypeField != null;
+        }
+        catch (Exception ex)
+        {
+            ArthurRayPovMod.Log?.LogWarning($"ArthurRayPovBootstrap: Failed to initialize StopTimeInfo reflection: {ex.Message}");
+            return false;
+        }
+    }
+
+    private bool IsEventComplete()
+    {
+        try
+        {
+            if (!_autoModeCameraActive)
+                return false;
+
+            // Timeout check (5 seconds)
+            if (Time.time - _eventCompletionTimeout > EventTimeoutSeconds)
+            {
+                ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: Event timed out after 5 seconds");
+                return true;
+            }
+
+            if (_matchObject == null)
+                return false;
+
+            // Get current time slice
+            var currentTimeProperty = _matchObject.GetType().GetProperty("CurrentTimeSlice");
+            if (currentTimeProperty == null)
+                return false;
+
+            int currentTime = (int)currentTimeProperty.GetValue(_matchObject, null);
+
+            // Check if enough time has passed (2 seconds = ~120 time slices at 60fps)
+            if (currentTime - _eventStartTimeSlice > 120)
+            {
+                ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: Event completed after {currentTime - _eventStartTimeSlice} time slices");
+                return true;
+            }
+
+            // Try to check StopTimeInfo for set piece completion
+            if (!TryInitializeStopTimeInfoReflection())
+                return false;
+
+            var stopInfosList = _stopTimeInfosField.GetValue(_matchObject);
+            if (stopInfosList == null)
+                return false;
+
+            var listType = stopInfosList.GetType();
+            var countProperty = listType.GetProperty("Count");
+            if (countProperty == null)
+                return false;
+
+            int count = (int)countProperty.GetValue(stopInfosList, null);
+            if (count == 0)
+                return false;
+
+            var getItemMethod = listType.GetMethod("get_Item");
+            if (getItemMethod == null)
+                return false;
+
+            // Check if a new set piece has started (indicates previous is complete)
+            for (int i = count - 1; i >= 0; i--)
+            {
+                var stopInfo = getItemMethod.Invoke(stopInfosList, new object[] { i });
+                if (stopInfo == null)
+                    continue;
+
+                int stopTimeSlice = (int)_stopTimeSliceField.GetValue(stopInfo);
+                byte setPieceType = (byte)_setPieceTypeField.GetValue(stopInfo);
+
+                // If we found a newer stop time with different set piece type, previous is complete
+                if (stopTimeSlice > _eventStartTimeSlice && setPieceType != _currentSetPieceType)
+                {
+                    ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: New set piece detected (type {setPieceType}), previous event complete");
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            ArthurRayPovMod.Log?.LogError($"ArthurRayPovBootstrap: IsEventComplete failed: {ex.Message}");
+            // On error, assume event is complete to avoid getting stuck
+            return true;
+        }
+    }
+
+    private void TrySelectGoalScorer()
+    {
+        try
+        {
+            // Try to find the goal scorer from MatchObjects
+            if (_matchObject == null)
+            {
+                // Fallback to ball carrier if Match object not found
+                ActivatePlayerPov(autoFollowBallCarrier: true);
+                return;
+            }
+
+            var matchObjectsProperty = _matchObject.GetType().GetProperty("MatchObjects");
+            if (matchObjectsProperty == null)
+            {
+                ActivatePlayerPov(autoFollowBallCarrier: true);
+                return;
+            }
+
+            var matchObjects = matchObjectsProperty.GetValue(_matchObject, null);
+            if (matchObjects == null)
+            {
+                ActivatePlayerPov(autoFollowBallCarrier: true);
+                return;
+            }
+
+            var goalScorerProperty = matchObjects.GetType().GetProperty("GoalScorer");
+            if (goalScorerProperty == null)
+            {
+                ActivatePlayerPov(autoFollowBallCarrier: true);
+                return;
+            }
+
+            var goalScorer = goalScorerProperty.GetValue(matchObjects, null);
+            if (goalScorer == null)
+            {
+                ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: No goal scorer found, falling back to ball carrier");
+                ActivatePlayerPov(autoFollowBallCarrier: true);
+                return;
+            }
+
+            // Try to get the entity ID or instance ID of the goal scorer
+            var entityIdProperty = goalScorer.GetType().GetProperty("EntityID");
+            if (entityIdProperty == null)
+                entityIdProperty = goalScorer.GetType().GetProperty("EntityId");
+
+            if (entityIdProperty != null)
+            {
+                var entityId = (int)entityIdProperty.GetValue(goalScorer, null);
+                ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: Found goal scorer with EntityID {entityId}");
+
+                // Activate player POV and try to find the scorer in our player list
+                ActivatePlayerPov(autoFollowBallCarrier: false);
+
+                // Try to find the scorer by matching entity ID with player GameObject name
+                EnsurePlayerList(forceRefresh: true);
+
+                foreach (var player in _players)
+                {
+                    if (player.IsValid && player.DisplayName.Contains(entityId.ToString()))
+                    {
+                        SetCurrentPlayer(player);
+                        ArthurRayPovMod.Log?.LogInfo($"ArthurRayPovBootstrap: Selected goal scorer: {player.DisplayName}");
+                        return;
+                    }
+                }
+
+                // If we can't find by ID, just follow ball carrier (scorer likely has the ball anyway)
+                ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: Could not match scorer to player, following ball carrier");
+                ActivatePlayerPov(autoFollowBallCarrier: true);
+            }
+            else
+            {
+                // No entity ID, just follow ball carrier
+                ActivatePlayerPov(autoFollowBallCarrier: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            ArthurRayPovMod.Log?.LogError($"ArthurRayPovBootstrap: TrySelectGoalScorer failed: {ex.Message}");
+            // Fallback to ball carrier
+            ActivatePlayerPov(autoFollowBallCarrier: true);
+        }
+    }
+
+    private void CheckReplayStateAndAutoTrigger()
+    {
+        try
+        {
+            // Cooldown to prevent rapid re-triggering
+            if (_replayDetectionCooldown > 0f)
+            {
+                _replayDetectionCooldown -= Time.unscaledDeltaTime;
+                return;
+            }
+
+            // Try to get Match object if not already cached
+            if (_matchObject == null && _tMatch != null)
+            {
+                var matchPlaybackController = GameObject.Find("MatchPlaybackController");
+                if (matchPlaybackController != null)
+                {
+                    var matchProperty = matchPlaybackController.GetType().GetProperty("Match");
+                    if (matchProperty != null)
+                    {
+                        _matchObject = matchProperty.GetValue(matchPlaybackController.GetComponent<Component>(), null);
+                    }
+                }
+
+                if (_matchObject == null)
+                    return;
+            }
+
+            if (_matchObject == null)
+                return;
+
+            // Check for replay state by looking at playback speed/time manipulation
+            // Replays typically change the playback state
+            var playbackInterfaceProp = _matchObject.GetType().GetProperty("PlaybackInterface");
+            if (playbackInterfaceProp != null)
+            {
+                var playbackInterface = playbackInterfaceProp.GetValue(_matchObject, null);
+                if (playbackInterface != null)
+                {
+                    // Check if currently in replay mode
+                    var isInReplayMethod = playbackInterface.GetType().GetMethod("IsInReplay");
+                    if (isInReplayMethod != null)
+                    {
+                        bool isInReplay = (bool)isInReplayMethod.Invoke(playbackInterface, null);
+
+                        // Trigger POV when replay starts (transition from false to true)
+                        if (isInReplay && !_wasInReplay)
+                        {
+                            ArthurRayPovMod.Log?.LogInfo("ArthurRayPovBootstrap: Replay started - auto-triggering POV");
+                            ActivatePlayerPov(autoFollowBallCarrier: true);
+                            _replayDetectionCooldown = 2f; // 2 second cooldown
+                        }
+
+                        _wasInReplay = isInReplay;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Silent failure - replay detection is optional
+            if (ex.Message.Contains("IsInReplay"))
+            {
+                // Method doesn't exist, disable replay detection
+                _replayDetectionCooldown = 999999f;
+            }
+        }
+    }
+
     private bool EnableCustomCamera()
     {
         string previousCustomTag = null;
@@ -1899,12 +2221,6 @@ public class ArthurRayPovBootstrap : MonoBehaviour
             if (dueToSceneChange)
                 ClearPendingRestore();
 
-            if (_vrRig != null && _vrRigActive)
-            {
-                _vrRig.SetActive(false);
-                _vrRigActive = false;
-            }
-
             if (_customCamera != null)
             {
                 _customCamera.enabled = false;
@@ -1986,122 +2302,13 @@ public class ArthurRayPovBootstrap : MonoBehaviour
             _managers.Clear();
             _hasSmoothedBall = false;
             _smoothedBallPosition = Vector3.zero;
+
+            // Reset event tracking state
+            _matchEventList = null;
+            _matchObject = null;
+            _lastProcessedEventFrame = -1;
+            _wasInReplay = false;
+            _replayDetectionCooldown = 0f;
         }
-    }
-}
-
-public class VrRig
-{
-    private Camera _leftEyeCamera;
-    private Camera _rightEyeCamera;
-    private GameObject _rigRoot;
-    public Transform _headTransform;
-    private float _interpupillaryDistance = 0.064f;
-    private float _fieldOfView = 96f;
-    private bool _isActive;
-
-    public void Initialize(Camera sourceCamera)
-    {
-        if (sourceCamera == null)
-            return;
-
-        _rigRoot = new GameObject("VRCameraRig");
-        _headTransform = _rigRoot.transform;
-
-        // Create left eye camera
-        var leftEyeGo = new GameObject("LeftEye");
-        leftEyeGo.transform.SetParent(_headTransform);
-        _leftEyeCamera = leftEyeGo.AddComponent<Camera>();
-
-        // Create right eye camera
-        var rightEyeGo = new GameObject("RightEye");
-        rightEyeGo.transform.SetParent(_headTransform);
-        _rightEyeCamera = rightEyeGo.AddComponent<Camera>();
-
-        // Copy settings from source camera
-        CopyCameraSettings(sourceCamera, _leftEyeCamera);
-        CopyCameraSettings(sourceCamera, _rightEyeCamera);
-
-        // Set up stereo rendering
-        _leftEyeCamera.stereoTargetEye = StereoTargetEyeMask.Left;
-        _rightEyeCamera.stereoTargetEye = StereoTargetEyeMask.Right;
-        _rightEyeCamera.enabled = false; // Only left eye renders main, right eye renders for stereo
-
-        UpdateEyePositions();
-    }
-
-    public void SetActive(bool active)
-    {
-        _isActive = active;
-        if (_rigRoot != null)
-            _rigRoot.SetActive(active);
-
-        if (active && _leftEyeCamera != null)
-        {
-            _leftEyeCamera.enabled = true;
-            _leftEyeCamera.tag = "MainCamera";
-        }
-        else if (_leftEyeCamera != null)
-        {
-            _leftEyeCamera.enabled = false;
-            _leftEyeCamera.tag = "Untagged";
-        }
-    }
-
-    public void SetInterpupillaryDistance(float ipd)
-    {
-        _interpupillaryDistance = Mathf.Max(0.01f, ipd);
-        UpdateEyePositions();
-    }
-
-    public void SetFieldOfView(float fov)
-    {
-        _fieldOfView = Mathf.Clamp(fov, 30f, 150f);
-        if (_leftEyeCamera != null)
-            _leftEyeCamera.fieldOfView = _fieldOfView;
-        if (_rightEyeCamera != null)
-            _rightEyeCamera.fieldOfView = _fieldOfView;
-    }
-
-    public void UpdateRig(Vector3 position, Quaternion rotation)
-    {
-        if (!_isActive || _headTransform == null)
-            return;
-
-        _headTransform.position = position;
-        _headTransform.rotation = rotation;
-    }
-
-    private void UpdateEyePositions()
-    {
-        if (_leftEyeCamera != null && _rightEyeCamera != null)
-        {
-            var halfIpd = _interpupillaryDistance * 0.5f;
-            _leftEyeCamera.transform.localPosition = new Vector3(-halfIpd, 0f, 0f);
-            _rightEyeCamera.transform.localPosition = new Vector3(halfIpd, 0f, 0f);
-        }
-    }
-
-    private void CopyCameraSettings(Camera source, Camera target)
-    {
-        if (source == null || target == null)
-            return;
-
-        target.fieldOfView = source.fieldOfView;
-        target.nearClipPlane = source.nearClipPlane;
-        target.farClipPlane = source.farClipPlane;
-        target.allowHDR = source.allowHDR;
-        target.allowMSAA = source.allowMSAA;
-        target.clearFlags = source.clearFlags;
-        target.backgroundColor = source.backgroundColor;
-        target.cullingMask = source.cullingMask;
-        target.depth = source.depth;
-    }
-
-    public void Cleanup()
-    {
-        SetActive(false);
-        if (_rigRoot != null)
-            Object.DestroyImmediate(_rigRoot);
     }
 }
