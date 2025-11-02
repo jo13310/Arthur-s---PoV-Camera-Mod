@@ -2,7 +2,7 @@
   "name": "ArthurRay PoV Camera Mod",
   "version": "1.1.0",
   "type": "misc",
-  "author": "GerKo & Brululul",
+  "author": "GerKo",
   "homepage": "https://github.com/jo13310/Arthur-s---PoV-Camera-Mod",
   "description": "Adds player and manager first-person camera angles with automatic event triggers for FM26 matches.",
   "compatibility": {
