@@ -19,16 +19,15 @@ Immersive first-person and manager-view camera pack for Football Manager 2026. S
 
 ### Through FM Reloaded (recommended)
 
-1. Download the latest `ArthurRay PoV Camera Mod` release ZIP from GitHub (the asset already contains `manifest.json`).
-2. In FM Reloaded Mod Manager, open **Mod Store** or **Install from ZIP**.
-3. Pick the downloaded archive; the manager will detect the manifest and copy `plugins/ArthurRayPovMod.dll` to `BepInEx/plugins/`.
-4. Enable the mod and launch the game.
+1. Open the **Mod Store** tab and install `ArthurRay PoV Camera Mod`. The entry downloads the latest `ArthurRayPovMod.dll`, fetches the hosted `manifest.json`, and places the DLL in `BepInEx/plugins/`.
+2. Alternatively, download the DLL manually and use **Install From ZIP/Folder** → select the folder containing `manifest.json`.
+3. Enable the mod and launch the game.
 
 ### Manual install
 
-1. Extract the release ZIP.
+1. Download `ArthurRayPovMod.dll` from the latest GitHub release.
 2. Copy `plugins/ArthurRayPovMod.dll` into your `Football Manager 26/BepInEx/plugins/` folder.
-3. (Optional) Keep the root `manifest.json` for future updates via FM Reloaded.
+3. (Optional) Keep the bundled `manifest.json` alongside the DLL so FM Reloaded can detect updates.
 
 ## Building from Source
 
